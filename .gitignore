@@ -1,0 +1,33 @@
+# Build output
+bin/
+obj/
+
+# Game reference DLLs (copied at build time)
+libs/
+lib/
+
+# NuGet
+packages/
+*.nupkg
+
+# Release packaging
+dist/
+release/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Pixi
+.pixi/
+
+# AI tooling
+.claude/
+.millhouse/
+
+# OS
+.DS_Store
+Thumbs.db

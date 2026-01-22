@@ -1,0 +1,217 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+
+jobs:
+  build:
+    name: Build and Validate
+    runs-on: windows-latest
+    if: ${{ !startsWith(github.event.head_commit.message, 'Release v') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download BepInEx
+        shell: pwsh
+        run: |
+          Write-Host "Downloading BepInEx 5.4.23.4..." -ForegroundColor Cyan
+
+          $bepinexUrl = "https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.4/BepInEx_win_x64_5.4.23.4.zip"
+          $expectedHash = "F881201B79DA03E513BF97CDF39607FFA7F9E0D31A519B1AEECA8EB60F8309E7"
+
+          $libsPath = "src/SubnauticaHeadTracking/libs"
+          New-Item -ItemType Directory -Path $libsPath -Force | Out-Null
+
+          Invoke-WebRequest -Uri $bepinexUrl -OutFile bepinex.zip
+
+          $actualHash = (Get-FileHash -Path bepinex.zip -Algorithm SHA256).Hash
+          if ($actualHash -ne $expectedHash) {
+            Write-Host "::error::BepInEx hash mismatch!"
+            Write-Host "::error::Expected: $expectedHash"
+            Write-Host "::error::Got: $actualHash"
+            exit 1
+          }
+
+          Write-Host "BepInEx download verified" -ForegroundColor Green
+
+          Expand-Archive -Path bepinex.zip -DestinationPath bepinex-temp
+          Copy-Item bepinex-temp/BepInEx/core/BepInEx.dll $libsPath/
+          Copy-Item bepinex-temp/BepInEx/core/0Harmony.dll $libsPath/
+
+          Remove-Item bepinex.zip
+          Remove-Item -Recurse bepinex-temp
+
+          Write-Host "BepInEx DLLs extracted to $libsPath" -ForegroundColor Green
+
+      - name: Create Unity stub assemblies for CI
+        shell: pwsh
+        run: |
+          Write-Host "Creating Unity stub assemblies for CI build..." -ForegroundColor Cyan
+
+          $libsPath = "src/SubnauticaHeadTracking/libs"
+
+          # Build UnityEngine.dll with all types from the checked-in UnityStubs.cs
+          # At runtime, Unity's real UnityEngine.dll type-forwards to module DLLs (CoreModule etc).
+          # Mono resolves [UnityEngine]Camera -> type forwarder -> [CoreModule]Camera.
+          # AssemblyVersion must be 0.0.0.0 to match real Unity assemblies, otherwise Mono's
+          # assembly resolver won't match and type forwarding fails with MissingMethodException.
+          $projContent = @"
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>netstandard2.0</TargetFramework>
+              <LangVersion>11</LangVersion>
+              <AssemblyName>UnityEngine</AssemblyName>
+              <AssemblyVersion>0.0.0.0</AssemblyVersion>
+              <FileVersion>0.0.0.0</FileVersion>
+              <NoWarn>CS0169;CS0649;CS0067;CS0660;CS0661</NoWarn>
+            </PropertyGroup>
+            <ItemGroup>
+              <Compile Include="UnityStubs.cs" />
+            </ItemGroup>
+          </Project>
+          "@
+          $projPath = Join-Path $libsPath "Stub_UnityEngine.csproj"
+          $projContent | Out-File -FilePath $projPath -Encoding utf8
+
+          dotnet build $projPath -c Release -o $libsPath --nologo -v q
+          if ($LASTEXITCODE -ne 0) {
+              Write-Host "::error::Failed to build UnityEngine stub"
+              exit 1
+          }
+          Write-Host "  Created UnityEngine.dll (with types, version 0.0.0.0)" -ForegroundColor Green
+          Remove-Item $projPath -ErrorAction SilentlyContinue
+
+          # Build empty stubs for other Unity modules (to satisfy reference requirements)
+          # All must use AssemblyVersion 0.0.0.0 to match real Unity assemblies.
+          $emptySource = "// Empty stub assembly"
+          $emptySourcePath = Join-Path $libsPath "EmptyStub.cs"
+          $emptySource | Out-File -FilePath $emptySourcePath -Encoding utf8
+
+          $emptyModules = @(
+              "UnityEngine.CoreModule",
+              "UnityEngine.IMGUIModule",
+              "UnityEngine.PhysicsModule",
+              "UnityEngine.UIModule",
+              "UnityEngine.TextRenderingModule",
+              "UnityEngine.InputLegacyModule",
+              "UnityEngine.UI"
+          )
+
+          foreach ($moduleName in $emptyModules) {
+              $emptyProjContent = @"
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>netstandard2.0</TargetFramework>
+              <AssemblyName>$moduleName</AssemblyName>
+              <AssemblyVersion>0.0.0.0</AssemblyVersion>
+              <FileVersion>0.0.0.0</FileVersion>
+            </PropertyGroup>
+            <ItemGroup>
+              <Compile Include="EmptyStub.cs" />
+            </ItemGroup>
+          </Project>
+          "@
+              $emptyProjPath = Join-Path $libsPath "Stub_$moduleName.csproj"
+              $emptyProjContent | Out-File -FilePath $emptyProjPath -Encoding utf8
+
+              dotnet build $emptyProjPath -c Release -o $libsPath --nologo -v q
+              if ($LASTEXITCODE -ne 0) {
+                  Write-Host "::error::Failed to build $moduleName stub"
+                  exit 1
+              }
+              Write-Host "  Created $moduleName.dll (empty)" -ForegroundColor Green
+              Remove-Item $emptyProjPath -ErrorAction SilentlyContinue
+          }
+
+          # Cleanup temp files and obj directories
+          Remove-Item $emptySourcePath -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $libsPath "*.deps.json") -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $libsPath "*.pdb") -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $libsPath -Directory -Filter "obj" -Recurse | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          # Also remove any stray obj folders that might have been created
+          if (Test-Path (Join-Path $libsPath "obj")) {
+              Remove-Item (Join-Path $libsPath "obj") -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+          Write-Host "Unity stub assemblies created successfully" -ForegroundColor Green
+
+      - name: Restore NuGet packages
+        shell: pwsh
+        run: |
+          $unityPath = "${{ github.workspace }}\src\SubnauticaHeadTracking\libs"
+          dotnet restore src/SubnauticaHeadTracking/SubnauticaHeadTracking.csproj "-p:UnityEnginePath=$unityPath"
+
+      - name: Verify Unity stubs
+        shell: pwsh
+        run: |
+          $unityPath = "${{ github.workspace }}\src\SubnauticaHeadTracking\libs"
+          Write-Host "UnityEnginePath: $unityPath"
+          Write-Host "Checking for stub DLLs..."
+          Get-ChildItem $unityPath -Filter "*.dll" | ForEach-Object { Write-Host "  Found: $($_.Name)" }
+
+          if (-not (Test-Path "$unityPath\UnityEngine.dll")) {
+            Write-Host "::error::UnityEngine.dll not found at $unityPath"
+            exit 1
+          }
+          Write-Host "All stubs verified" -ForegroundColor Green
+
+      - name: Build Release
+        shell: pwsh
+        run: |
+          Write-Host "Building release configuration..." -ForegroundColor Cyan
+          $unityPath = "${{ github.workspace }}\src\SubnauticaHeadTracking\libs"
+          dotnet build src/SubnauticaHeadTracking/SubnauticaHeadTracking.csproj --configuration Release "-p:UnityEnginePath=$unityPath"
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Release build failed"
+            exit 1
+          }
+
+          Write-Host "Release build succeeded" -ForegroundColor Green
+
+      - name: Verify build outputs
+        shell: pwsh
+        run: |
+          Write-Host "Verifying build outputs..." -ForegroundColor Cyan
+
+          $requiredFiles = @(
+            "src/SubnauticaHeadTracking/bin/Release/net48/SubnauticaHeadTracking.dll"
+          )
+
+          $allExist = $true
+          foreach ($file in $requiredFiles) {
+            if (Test-Path $file) {
+              $size = (Get-Item $file).Length / 1KB
+              Write-Host "  $file ($([math]::Round($size, 2)) KB)" -ForegroundColor Green
+            } else {
+              Write-Host "  Missing: $file" -ForegroundColor Red
+              $allExist = $false
+            }
+          }
+
+          if (-not $allExist) {
+            Write-Host "::error::Some build outputs are missing"
+            exit 1
+          }
+
+          Write-Host "All build outputs verified" -ForegroundColor Green

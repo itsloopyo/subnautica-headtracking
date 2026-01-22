@@ -1,0 +1,252 @@
+name: Release
+run-name: "Release ${{ github.ref_name }}"
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^v(\d+\.\d+\.\d+)$') {
+            Write-Host "::error::Tag format invalid. Use semantic versioning: v1.2.3"
+            exit 1
+          }
+          $version = $matches[1]
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+
+      - name: Validate version matches csproj
+        shell: pwsh
+        run: |
+          $csproj = Get-Content "src/SubnauticaHeadTracking/SubnauticaHeadTracking.csproj" -Raw
+          $match = [regex]::Match($csproj, '<Version>([^<]+)</Version>')
+          if ($match.Success) {
+            $csprojVersion = $match.Groups[1].Value
+            $tagVersion = "${{ steps.version.outputs.version }}"
+
+            Write-Host "csproj version: $csprojVersion"
+            Write-Host "Tag version: $tagVersion"
+
+            if ($csprojVersion -ne $tagVersion) {
+              Write-Host "::error::Version mismatch! Tag is v$tagVersion but csproj has $csprojVersion"
+              exit 1
+            }
+            Write-Host "Version matches!" -ForegroundColor Green
+          } else {
+            Write-Host "No Version tag in csproj, skipping version validation"
+          }
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download BepInEx
+        shell: pwsh
+        run: |
+          Write-Host "Downloading BepInEx 5.4.23.4..." -ForegroundColor Cyan
+
+          $bepinexUrl = "https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.4/BepInEx_win_x64_5.4.23.4.zip"
+          $expectedHash = "F881201B79DA03E513BF97CDF39607FFA7F9E0D31A519B1AEECA8EB60F8309E7"
+
+          $libsPath = "src/SubnauticaHeadTracking/libs"
+          New-Item -ItemType Directory -Path $libsPath -Force | Out-Null
+
+          Invoke-WebRequest -Uri $bepinexUrl -OutFile bepinex.zip
+
+          $actualHash = (Get-FileHash -Path bepinex.zip -Algorithm SHA256).Hash
+          if ($actualHash -ne $expectedHash) {
+            Write-Host "::error::BepInEx hash mismatch!"
+            exit 1
+          }
+
+          Write-Host "BepInEx download verified" -ForegroundColor Green
+
+          Expand-Archive -Path bepinex.zip -DestinationPath bepinex-temp
+          Copy-Item bepinex-temp/BepInEx/core/BepInEx.dll $libsPath/
+          Copy-Item bepinex-temp/BepInEx/core/0Harmony.dll $libsPath/
+
+          Remove-Item bepinex.zip
+          Remove-Item -Recurse bepinex-temp
+
+          Write-Host "BepInEx DLLs extracted to $libsPath" -ForegroundColor Green
+
+      - name: Create Unity stub assemblies for CI
+        shell: pwsh
+        run: |
+          Write-Host "Creating Unity stub assemblies for CI build..." -ForegroundColor Cyan
+
+          $libsPath = "src/SubnauticaHeadTracking/libs"
+
+          # Build UnityEngine.dll with all types from checked-in UnityStubs.cs
+          # At runtime, Unity's real UnityEngine.dll type-forwards to module DLLs (CoreModule etc).
+          # Mono resolves [UnityEngine]Camera -> type forwarder -> [CoreModule]Camera.
+          # AssemblyVersion must be 0.0.0.0 to match real Unity assemblies, otherwise Mono's
+          # assembly resolver won't match and type forwarding fails with MissingMethodException.
+          $projContent = @"
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>netstandard2.0</TargetFramework>
+              <LangVersion>11</LangVersion>
+              <AssemblyName>UnityEngine</AssemblyName>
+              <AssemblyVersion>0.0.0.0</AssemblyVersion>
+              <FileVersion>0.0.0.0</FileVersion>
+              <NoWarn>CS0169;CS0649;CS0067;CS0660;CS0661</NoWarn>
+            </PropertyGroup>
+            <ItemGroup>
+              <Compile Include="UnityStubs.cs" />
+            </ItemGroup>
+          </Project>
+          "@
+          $projPath = Join-Path $libsPath "UnityStubs.csproj"
+          $projContent | Out-File -FilePath $projPath -Encoding utf8
+
+          dotnet build $projPath -c Release -o $libsPath --nologo -v q
+          if ($LASTEXITCODE -ne 0) {
+              Write-Host "::error::Failed to build Unity stubs"
+              exit 1
+          }
+          Write-Host "  Created UnityEngine.dll (with types, version 0.0.0.0)" -ForegroundColor Green
+
+          # Create empty stub assemblies for other Unity modules
+          # All must use AssemblyVersion 0.0.0.0 to match real Unity assemblies.
+          $emptyStubProj = @"
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>netstandard2.0</TargetFramework>
+              <AssemblyName>ASSEMBLY_NAME_PLACEHOLDER</AssemblyName>
+              <AssemblyVersion>0.0.0.0</AssemblyVersion>
+              <FileVersion>0.0.0.0</FileVersion>
+            </PropertyGroup>
+          </Project>
+          "@
+
+          $otherModules = @("UnityEngine.CoreModule", "UnityEngine.IMGUIModule", "UnityEngine.PhysicsModule", "UnityEngine.UIModule", "UnityEngine.TextRenderingModule", "UnityEngine.InputLegacyModule", "UnityEngine.UI")
+          foreach ($module in $otherModules) {
+              $moduleProj = $emptyStubProj -replace "ASSEMBLY_NAME_PLACEHOLDER", $module
+              $moduleProjPath = Join-Path $libsPath "$module.csproj"
+              $moduleProj | Out-File -FilePath $moduleProjPath -Encoding utf8
+              dotnet build $moduleProjPath -c Release -o $libsPath --nologo -v q
+              Remove-Item $moduleProjPath -ErrorAction SilentlyContinue
+              Write-Host "  Created $module.dll" -ForegroundColor Green
+          }
+
+          # Cleanup temp files and obj directories
+          Remove-Item $projPath -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $libsPath "*.deps.json") -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $libsPath "*.pdb") -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $libsPath -Directory -Filter "obj" -Recurse | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          if (Test-Path (Join-Path $libsPath "obj")) {
+              Remove-Item (Join-Path $libsPath "obj") -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          Write-Host "Unity stub assemblies created" -ForegroundColor Green
+
+      - name: Restore NuGet packages
+        shell: pwsh
+        run: |
+          $unityPath = "${{ github.workspace }}\src\SubnauticaHeadTracking\libs"
+          dotnet restore src/SubnauticaHeadTracking/SubnauticaHeadTracking.csproj "-p:UnityEnginePath=$unityPath"
+
+      - name: Build release
+        shell: pwsh
+        run: |
+          Write-Host "Building release..." -ForegroundColor Cyan
+          $unityPath = "${{ github.workspace }}\src\SubnauticaHeadTracking\libs"
+          dotnet build src/SubnauticaHeadTracking/SubnauticaHeadTracking.csproj --configuration Release "-p:UnityEnginePath=$unityPath"
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Build failed"
+            exit 1
+          }
+
+          Write-Host "Build succeeded" -ForegroundColor Green
+
+      - name: Package release
+        shell: pwsh
+        run: |
+          Write-Host "Packaging release..." -ForegroundColor Cyan
+          powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Packaging failed"
+            exit 1
+          }
+
+          Write-Host "Package created" -ForegroundColor Green
+
+      - name: Generate release notes
+        shell: pwsh
+        run: |
+          $artifactPaths = @(
+            "src/SubnauticaHeadTracking/"
+          )
+
+          & cameraunlock-core/scripts/generate-release-notes.ps1 `
+            -Version "${{ steps.version.outputs.version }}" `
+            -ArtifactPaths $artifactPaths `
+            -ProjectName "Head Tracking for Subnautica"
+
+      - name: Find release ZIPs
+        id: find_zips
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $installerZip = "release/SubnauticaHeadTracking-v$version-installer.zip"
+          $nexusZip = "release/SubnauticaHeadTracking-v$version-nexus.zip"
+
+          if (-not (Test-Path $installerZip)) {
+            Write-Host "::error::Installer ZIP not found at $installerZip"
+            exit 1
+          }
+          if (-not (Test-Path $nexusZip)) {
+            Write-Host "::error::Nexus ZIP not found at $nexusZip"
+            exit 1
+          }
+
+          echo "installer_zip=$installerZip" >> $env:GITHUB_OUTPUT
+          echo "nexus_zip=$nexusZip" >> $env:GITHUB_OUTPUT
+          Write-Host "Found: $installerZip"
+          Write-Host "Found: $nexusZip"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $installerZip = "${{ steps.find_zips.outputs.installer_zip }}"
+          $nexusZip = "${{ steps.find_zips.outputs.nexus_zip }}"
+
+          Write-Host "Creating GitHub Release for $tag..." -ForegroundColor Cyan
+
+          gh release create $tag `
+            --title "Head Tracking for Subnautica $tag" `
+            --notes-file "release-notes.txt" `
+            $installerZip `
+            $nexusZip
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Failed to create GitHub release"
+            exit 1
+          }
+
+          Write-Host "Release created successfully!" -ForegroundColor Green
