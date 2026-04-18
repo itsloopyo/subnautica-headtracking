@@ -46,7 +46,7 @@ if not "%~1"=="" (
         set "GAME_PATH=%~1"
         goto :found_game
     )
-    echo ERROR: %GAME_EXE% not found at: %~1
+    echo ERROR: %GAME_EXE% not found at: "%~1"
     echo.
     exit /b 1
 )
@@ -187,7 +187,7 @@ echo.
 echo Start the game to use the mod!
 if defined MOD_CONTROLS (
     echo.
-    echo %MOD_CONTROLS%
+    echo !MOD_CONTROLS!
 )
 echo.
 exit /b 0
