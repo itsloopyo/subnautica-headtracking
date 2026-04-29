@@ -24,19 +24,11 @@ namespace SubnauticaHeadTracking.Camera
 
         // Processing pipeline from the shared library
         private static readonly TrackingProcessor processor = new TrackingProcessor();
-        private static readonly PoseInterpolator poseInterpolator = new PoseInterpolator
-        {
-            // Default 0.1s decays velocity to 56% within a 30Hz sample period (33ms),
-            // causing a 44% snap at every sample boundary. At 0.5s the decay is only 12%,
-            // keeping predictions accurate between samples so the processor just absorbs
-            // the small residual error instead of chasing large steps.
-            MaxExtrapolationTime = 0.5f
-        };
+        private static readonly PoseInterpolator poseInterpolator = new PoseInterpolator();
 
         // Position processing
         private static PositionProcessor _positionProcessor;
         private static PositionInterpolator _positionInterpolator;
-        private static bool _positionEnabled = true;
 
         // Swim body avoidance: offset camera forward+down when swimming
         private static float _smoothedSwimBlend;
@@ -72,12 +64,8 @@ namespace SubnauticaHeadTracking.Camera
         /// </summary>
         public static Matrix4x4 OriginalViewMatrix { get; private set; }
 
-        /// <summary>Whether positional tracking is enabled.</summary>
-        public static bool PositionEnabled
-        {
-            get => _positionEnabled;
-            set => _positionEnabled = value;
-        }
+        /// <summary>Whether positional tracking is enabled (derived from <see cref="State.TrackingState.Mode"/>).</summary>
+        public static bool PositionEnabled => State.TrackingState.IsPositionEnabled;
 
         /// <summary>
         /// Initializes position processing components.
@@ -139,10 +127,13 @@ namespace SubnauticaHeadTracking.Camera
             // residual error at sample boundaries.
             TrackingPose processedPose = processor.Process(interpolatedPose, dt);
 
-            // Store processed values for reticle compensation
-            CurrentYaw = processedPose.Yaw;
-            CurrentPitch = processedPose.Pitch;
-            CurrentRoll = processedPose.Roll;
+            // When the user has disabled rotation (PositionOnly mode), zero the angles
+            // so the rotation matrix collapses to identity and reticle/HUD compensators
+            // see no rotation. The processor still ran above so it stays warm for resume.
+            bool rotationEnabled = State.TrackingState.IsRotationEnabled;
+            CurrentYaw = rotationEnabled ? processedPose.Yaw : 0f;
+            CurrentPitch = rotationEnabled ? processedPose.Pitch : 0f;
+            CurrentRoll = rotationEnabled ? processedPose.Roll : 0f;
 
             // Capture the original (game-computed) view matrix before we modify it.
             cam.ResetWorldToCameraMatrix();
@@ -168,7 +159,7 @@ namespace SubnauticaHeadTracking.Camera
             Vector3 totalViewOffset = Vector3.zero;
 
             // Position processing: compute offset (rendering-only, like rotation)
-            if (_positionEnabled && _positionProcessor != null && _positionInterpolator != null)
+            if (State.TrackingState.IsPositionEnabled && _positionProcessor != null && _positionInterpolator != null)
             {
                 var rawPos = receiver.GetLatestPosition();
                 var interpolatedPos = _positionInterpolator.Update(rawPos, dt);
@@ -205,7 +196,7 @@ namespace SubnauticaHeadTracking.Camera
             if (!_hasLoggedFirstApplication)
             {
                 Logger.LogInfo($"First view matrix rotation applied: Yaw={CurrentYaw:F2}°, Pitch={CurrentPitch:F2}°, Roll={CurrentRoll:F2}°");
-                Logger.LogInfo($"Baseline smoothing={SmoothingUtils.BaselineSmoothing}, extrapolation window={poseInterpolator.MaxExtrapolationTime}s");
+                Logger.LogInfo($"Baseline smoothing={SmoothingUtils.BaselineSmoothing}, extrapolation fraction={poseInterpolator.MaxExtrapolationFraction}");
                 Logger.LogInfo("Head tracking uses camera-local rotation (no horizon lock — swimming-safe)");
                 _hasLoggedFirstApplication = true;
             }

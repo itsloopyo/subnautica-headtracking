@@ -238,11 +238,12 @@ jobs:
 
           Write-Host "Creating GitHub Release for $tag..." -ForegroundColor Cyan
 
+          $releaseArgs = @($installerZip, $nexusZip)
+
           gh release create $tag `
             --title "Head Tracking for Subnautica $tag" `
             --notes-file "release-notes.txt" `
-            $installerZip `
-            $nexusZip
+            @releaseArgs
 
           if ($LASTEXITCODE -ne 0) {
             Write-Host "::error::Failed to create GitHub release"

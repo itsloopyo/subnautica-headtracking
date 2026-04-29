@@ -26,7 +26,7 @@ namespace SubnauticaHeadTracking.Config
 
         public static ConfigEntry<KeyCode> ToggleHotkey { get; private set; }
         public static ConfigEntry<KeyCode> RecenterHotkey { get; private set; }
-        public static ConfigEntry<KeyCode> PositionToggleHotkey { get; private set; }
+        public static ConfigEntry<KeyCode> CycleTrackingModeHotkey { get; private set; }
         public static ConfigEntry<KeyCode> CyclePortHotkey { get; private set; }
 
         public static ConfigEntry<float> SmoothingFactor { get; private set; }
@@ -163,11 +163,11 @@ namespace SubnauticaHeadTracking.Config
                 "Hotkey to recenter head tracking. Treats current head position as neutral."
             );
 
-            PositionToggleHotkey = config.Bind(
+            CycleTrackingModeHotkey = config.Bind(
                 "Hotkeys",
-                "PositionToggle",
+                "CycleTrackingMode",
                 KeyCode.PageUp,
-                "Hotkey to toggle positional tracking on/off"
+                "Hotkey to cycle tracking mode: full → rotation only (position disabled) → position only (rotation disabled) → full."
             );
 
             CyclePortHotkey = config.Bind(

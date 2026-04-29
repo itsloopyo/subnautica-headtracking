@@ -5,8 +5,11 @@ using CameraUnlock.Core.Protocol;
 namespace SubnauticaHeadTracking.Input
 {
     /// <summary>
-    /// Monitors keyboard input for toggle and recenter hotkeys.
-    /// Called from HeadTrackingPlugin.Update() every frame.
+    /// Monitors keyboard input for the four mod hotkeys.
+    /// Each action is bound to BOTH a nav-cluster key (configurable via the cfg file)
+    /// AND a hardcoded Ctrl+Shift+&lt;letter&gt; chord, drawn from the T/Y/U/G/H/J cluster
+    /// per the CameraUnlock chord-binding standard. Either binding fires the same action.
+    /// Called from HeadTrackingPlugin's per-frame camera callback.
     /// </summary>
     public static class HotkeyHandler
     {
@@ -15,7 +18,7 @@ namespace SubnauticaHeadTracking.Input
 
         private static KeyCode _cachedToggleHotkey;
         private static KeyCode _cachedRecenterHotkey;
-        private static KeyCode _cachedPositionToggleHotkey;
+        private static KeyCode _cachedCycleTrackingModeHotkey;
         private static KeyCode _cachedCyclePortHotkey;
         private static bool _cacheInitialized = false;
 
@@ -44,30 +47,49 @@ namespace SubnauticaHeadTracking.Input
             {
                 _cachedToggleHotkey = Config.ConfigurationManager.ToggleHotkey.Value;
                 _cachedRecenterHotkey = Config.ConfigurationManager.RecenterHotkey.Value;
-                _cachedPositionToggleHotkey = Config.ConfigurationManager.PositionToggleHotkey.Value;
+                _cachedCycleTrackingModeHotkey = Config.ConfigurationManager.CycleTrackingModeHotkey.Value;
                 _cachedCyclePortHotkey = Config.ConfigurationManager.CyclePortHotkey.Value;
                 _cacheInitialized = true;
             }
 
-            if (UnityEngine.Input.GetKeyDown(_cachedToggleHotkey))
-            {
-                HandleToggleHotkey();
-            }
+            bool chordModifiers = IsCtrlShiftHeld();
 
-            if (UnityEngine.Input.GetKeyDown(_cachedRecenterHotkey))
+            // Recenter: Home or Ctrl+Shift+T
+            if (UnityEngine.Input.GetKeyDown(_cachedRecenterHotkey)
+                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.T)))
             {
                 HandleRecenterHotkey();
             }
 
-            if (UnityEngine.Input.GetKeyDown(_cachedPositionToggleHotkey))
+            // Toggle tracking: End or Ctrl+Shift+Y
+            if (UnityEngine.Input.GetKeyDown(_cachedToggleHotkey)
+                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.Y)))
             {
-                HandlePositionToggleHotkey();
+                HandleToggleHotkey();
             }
 
-            if (UnityEngine.Input.GetKeyDown(_cachedCyclePortHotkey))
+            // Cycle tracking mode: Page Up or Ctrl+Shift+G
+            if (UnityEngine.Input.GetKeyDown(_cachedCycleTrackingModeHotkey)
+                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.G)))
+            {
+                HandleCycleTrackingModeHotkey();
+            }
+
+            // Cycle UDP port: Page Down or Ctrl+Shift+H
+            if (UnityEngine.Input.GetKeyDown(_cachedCyclePortHotkey)
+                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.H)))
             {
                 HeadTrackingPlugin.CyclePort();
             }
+        }
+
+        private static bool IsCtrlShiftHeld()
+        {
+            bool ctrl = UnityEngine.Input.GetKey(KeyCode.LeftControl)
+                     || UnityEngine.Input.GetKey(KeyCode.RightControl);
+            bool shift = UnityEngine.Input.GetKey(KeyCode.LeftShift)
+                      || UnityEngine.Input.GetKey(KeyCode.RightShift);
+            return ctrl && shift;
         }
 
         /// <summary>
@@ -86,13 +108,12 @@ namespace SubnauticaHeadTracking.Input
         }
 
         /// <summary>
-        /// Handles the position toggle hotkey press.
-        /// Toggles positional tracking on/off.
+        /// Advances the three-state tracking-mode cycle:
+        /// Full → rotation only (position disabled) → position only (rotation disabled) → Full.
         /// </summary>
-        private static void HandlePositionToggleHotkey()
+        private static void HandleCycleTrackingModeHotkey()
         {
-            Camera.CameraRotationApplicator.PositionEnabled = !Camera.CameraRotationApplicator.PositionEnabled;
-            Logger.LogInfo($"Position tracking {(Camera.CameraRotationApplicator.PositionEnabled ? "enabled" : "disabled")}");
+            State.TrackingState.CycleMode();
         }
 
         /// <summary>

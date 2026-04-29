@@ -5,11 +5,14 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "Validating release readiness..." -ForegroundColor Cyan
 
-# Read manifest.json to get current version
-$manifest = Get-Content "manifest.json" -Raw | ConvertFrom-Json
-$version = $manifest.Version
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectDir = Split-Path -Parent $scriptDir
+Import-Module (Join-Path $projectDir "cameraunlock-core/powershell/ReleaseWorkflow.psm1") -Force
 
-Write-Host "Current version in manifest.json: $version" -ForegroundColor Yellow
+$csprojPath = Join-Path $projectDir "src/SubnauticaHeadTracking/SubnauticaHeadTracking.csproj"
+$version = Get-CsprojVersion $csprojPath
+
+Write-Host "Current version in .csproj: $version" -ForegroundColor Yellow
 
 # Check 1: Verify version format is semantic versioning
 if ($version -notmatch '^\d+\.\d+\.\d+$') {
@@ -39,7 +42,7 @@ Write-Host "✅ CHANGELOG.md contains entry for v$version" -ForegroundColor Gree
 $tagExists = git tag -l "v$version" 2>$null
 if ($LASTEXITCODE -eq 0 -and $tagExists) {
     Write-Host "❌ FAIL: Git tag v$version already exists" -ForegroundColor Red
-    Write-Host "Bump the version in manifest.json to create a new release" -ForegroundColor Yellow
+    Write-Host "Bump the version in the .csproj to create a new release" -ForegroundColor Yellow
     exit 1
 }
 Write-Host "✅ Tag v$version does not yet exist" -ForegroundColor Green

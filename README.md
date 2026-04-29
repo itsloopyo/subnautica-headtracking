@@ -1,6 +1,6 @@
 # Subnautica Head Tracking
 
-![Mod GIF](assets/readme-clip.gif)
+![Mod GIF](https://raw.githubusercontent.com/itsloopyo/subnautica-headtracking/main/assets/readme-clip.gif)
 
 An **unofficial** BepInEx mod that adds head tracking support to Subnautica using OpenTrack-compatible trackers.
 
@@ -67,12 +67,23 @@ This mod includes built-in smoothing to handle network jitter, so if your tracki
 
 ## Controls
 
-| Key | Action |
-|-----|--------|
-| **Home** | Recenter (set current head position as neutral) |
-| **End** | Toggle head tracking on/off |
-| **Page Up** | Toggle position tracking on/off |
-| **Page Down** | Cycle UDP port (4242 → 4243 → 4244 → 4245 → 4242) |
+Two equivalent binding sets - use whichever your keyboard has:
+
+| Action              | Nav-cluster | Chord           |
+|---------------------|-------------|-----------------|
+| Recenter            | `Home`      | `Ctrl+Shift+T`  |
+| Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
+| Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
+| Cycle UDP port      | `Page Down` | `Ctrl+Shift+H`  |
+
+`Page Up` / `Ctrl+Shift+G` cycles tracking mode:
+
+1. Normal head-tracked gameplay
+2. Positional tracking disabled, rotational tracking enabled
+3. Rotational tracking disabled, positional tracking enabled
+4. Back to normal
+
+`Page Down` / `Ctrl+Shift+H` cycles the UDP listen port through 4242 → 4243 → 4244 → 4245 → 4242 (useful for couch co-op with multiple game instances on the same PC).
 
 ## Configuration
 
@@ -101,7 +112,7 @@ RollInvert = false
 [Hotkeys]
 Toggle = End                 # Enable/disable tracking
 Recenter = Home              # Set current position as neutral
-PositionToggle = PageUp      # Toggle positional tracking
+CycleTrackingMode = PageUp   # Cycle tracking mode (full → rotation only → position only)
 CyclePort = PageDown         # Cycle UDP port 4242-4245
 
 [Advanced]

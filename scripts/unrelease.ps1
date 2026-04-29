@@ -1,7 +1,11 @@
 #!/usr/bin/env pwsh
-# Unrelease script - safely revert a release
-# Usage: unrelease.ps1 <version>
-# Example: unrelease.ps1 1.0.1
+# Unrelease - revert a release. Fully unattended.
+# The mandatory -Version arg + the "last commit must be the matching
+# 'Release v<version>' commit" check are the only safety gates; there
+# is no second confirmation prompt. Force-pushes main if the revert
+# precondition matches, so use deliberately.
+#
+# Usage: pixi run unrelease <X.Y.Z>
 
 param(
     [Parameter(Mandatory=$true)]
@@ -16,44 +20,35 @@ Write-Host "======================================" -ForegroundColor Red
 Write-Host ""
 
 if ($Version -notmatch '^\d+\.\d+\.\d+$') {
-    Write-Host "❌ ERROR: Version '$Version' is not valid semantic versioning" -ForegroundColor Red
-    Write-Host "Use format: X.Y.Z (e.g., 1.0.1)" -ForegroundColor Yellow
+    Write-Host "ERROR: Version '$Version' is not valid semantic versioning (X.Y.Z)" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "⚠️  WARNING: This will:" -ForegroundColor Yellow
-Write-Host "  1. Delete the local git tag v$Version" -ForegroundColor White
-Write-Host "  2. Delete the remote git tag v$Version from GitHub" -ForegroundColor White
-Write-Host "  3. Revert the version bump commit (if it's the last commit)" -ForegroundColor White
+Write-Host "Will:" -ForegroundColor Yellow
+Write-Host "  1. Delete local git tag v$Version" -ForegroundColor White
+Write-Host "  2. Delete remote git tag v$Version from GitHub" -ForegroundColor White
+Write-Host "  3. If HEAD is the 'Release v$Version' commit: reset --hard HEAD~1 and force-push main" -ForegroundColor White
 Write-Host ""
-Write-Host "⚠️  NOTE: This does NOT delete the GitHub Release." -ForegroundColor Yellow
-Write-Host "  You must manually delete it at:" -ForegroundColor Yellow
+Write-Host "NOTE: This does NOT delete the GitHub Release." -ForegroundColor Yellow
+Write-Host "  Manually delete at:" -ForegroundColor Yellow
 Write-Host "  https://github.com/udkyo/subnautica-head-tracking/releases/tag/v$Version" -ForegroundColor Cyan
-Write-Host ""
-
-$confirmation = Read-Host "Are you sure you want to unrelease v$Version? Type 'yes' to confirm"
-if ($confirmation -ne 'yes') {
-    Write-Host "Aborted." -ForegroundColor Yellow
-    exit 0
-}
-
 Write-Host ""
 
 Write-Host "[1/4] Checking local tag..." -ForegroundColor Cyan
 $localTag = git tag -l "v$Version" 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $localTag) {
-    Write-Host "⚠️  Local tag v$Version does not exist" -ForegroundColor Yellow
+    Write-Host "  Local tag v$Version does not exist" -ForegroundColor Yellow
 } else {
-    Write-Host "✅ Found local tag v$Version" -ForegroundColor Green
+    Write-Host "  Found local tag v$Version" -ForegroundColor Green
 }
 Write-Host ""
 
 Write-Host "[2/4] Checking remote tag..." -ForegroundColor Cyan
 $remoteTag = git ls-remote --tags origin "refs/tags/v$Version" 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $remoteTag) {
-    Write-Host "⚠️  Remote tag v$Version does not exist" -ForegroundColor Yellow
+    Write-Host "  Remote tag v$Version does not exist" -ForegroundColor Yellow
 } else {
-    Write-Host "✅ Found remote tag v$Version" -ForegroundColor Green
+    Write-Host "  Found remote tag v$Version" -ForegroundColor Green
 }
 Write-Host ""
 
@@ -69,9 +64,9 @@ if ($remoteTag) {
     $ErrorActionPreference = $prevErrorActionPreference
 
     if ($pushExitCode -eq 0) {
-        Write-Host "✅ Remote tag v$Version deleted from GitHub" -ForegroundColor Green
+        Write-Host "  Remote tag v$Version deleted from GitHub" -ForegroundColor Green
     } else {
-        Write-Host "⚠️  Failed to delete remote tag (may not exist or no permissions)" -ForegroundColor Yellow
+        Write-Host "  Failed to delete remote tag (may not exist or no permissions)" -ForegroundColor Yellow
     }
 } else {
     Write-Host "[3/4] Skipping remote tag deletion (doesn't exist)" -ForegroundColor Cyan
@@ -82,9 +77,9 @@ if ($localTag) {
     Write-Host "[4/4] Deleting local tag..." -ForegroundColor Cyan
     git tag -d "v$Version"
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "✅ Local tag v$Version deleted" -ForegroundColor Green
+        Write-Host "  Local tag v$Version deleted" -ForegroundColor Green
     } else {
-        Write-Host "❌ Failed to delete local tag" -ForegroundColor Red
+        Write-Host "  Failed to delete local tag" -ForegroundColor Red
         exit 1
     }
 } else {
@@ -92,42 +87,27 @@ if ($localTag) {
 }
 Write-Host ""
 
-Write-Host "Checking for version bump commit..." -ForegroundColor Cyan
+Write-Host "Checking for release commit..." -ForegroundColor Cyan
 $lastCommit = git log -1 --pretty=format:"%s"
-if ($lastCommit -match "chore: bump version to $Version") {
-    Write-Host "Found version bump commit: $lastCommit" -ForegroundColor Yellow
-    Write-Host ""
-    $revertCommit = Read-Host "Do you want to revert this commit? (yes/no)"
-
-    if ($revertCommit -eq 'yes') {
-        Write-Host ""
-        Write-Host "Reverting last commit..." -ForegroundColor Cyan
-        git reset --hard HEAD~1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Version bump commit reverted" -ForegroundColor Green
-            Write-Host ""
-            Write-Host "⚠️  WARNING: You need to force push to update the remote:" -ForegroundColor Yellow
-            Write-Host "  git push origin main --force" -ForegroundColor White
-            Write-Host ""
-            $forcePush = Read-Host "Push now? (yes/no)"
-            if ($forcePush -eq 'yes') {
-                git push origin main --force
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "✅ Forced push completed" -ForegroundColor Green
-                } else {
-                    Write-Host "❌ Force push failed" -ForegroundColor Red
-                    Write-Host "Run manually: git push origin main --force" -ForegroundColor Yellow
-                }
-            }
-        } else {
-            Write-Host "❌ Failed to revert commit" -ForegroundColor Red
-            exit 1
-        }
+if ($lastCommit -eq "Release v$Version") {
+    Write-Host "Found release commit: $lastCommit" -ForegroundColor Yellow
+    Write-Host "Reverting last commit..." -ForegroundColor Cyan
+    git reset --hard HEAD~1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Failed to revert commit" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "  Release commit reverted" -ForegroundColor Green
+    Write-Host "Force-pushing main..." -ForegroundColor Cyan
+    git push origin main --force
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  Forced push completed" -ForegroundColor Green
     } else {
-        Write-Host "Commit left in place" -ForegroundColor Yellow
+        Write-Host "  Force push failed - run manually: git push origin main --force" -ForegroundColor Red
+        exit 1
     }
 } else {
-    Write-Host "⚠️  Last commit is not a version bump for v$Version" -ForegroundColor Yellow
+    Write-Host "  Last commit is not 'Release v$Version' - skipping revert" -ForegroundColor Yellow
     Write-Host "  Last commit: $lastCommit" -ForegroundColor White
 }
 
@@ -139,6 +119,6 @@ Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Manually delete the GitHub Release at:" -ForegroundColor White
 Write-Host "     https://github.com/udkyo/subnautica-head-tracking/releases/tag/v$Version" -ForegroundColor Cyan
-Write-Host "  2. Verify manifest.json has the correct version" -ForegroundColor White
+Write-Host "  2. Verify the .csproj has the correct version" -ForegroundColor White
 Write-Host "  3. Verify CHANGELOG.md is up to date" -ForegroundColor White
 Write-Host ""

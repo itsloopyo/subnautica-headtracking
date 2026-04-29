@@ -2,93 +2,87 @@
 :: ============================================
 :: Subnautica Head Tracking - Install
 :: ============================================
-:: Based on cameraunlock-core/scripts/templates/install.cmd
+:: Based on cameraunlock-core/scripts/templates/install.cmd (BepInEx x64).
+:: Detection delegated to shared/find-game.ps1 (reads games.json).
+:: Only the CONFIG BLOCK below is customised for this mod.
 :: ============================================
 
 :: --- CONFIG BLOCK ---
+set "GAME_ID=subnautica"
 set "MOD_DISPLAY_NAME=Subnautica Head Tracking"
-set "GAME_EXE=Subnautica.exe"
-set "GAME_DISPLAY_NAME=Subnautica"
-set "STEAM_FOLDER_NAME=Subnautica"
-set "ENV_VAR_NAME=SUBNAUTICA_PATH"
 set "MOD_DLLS=SubnauticaHeadTracking.dll CameraUnlock.Core.dll CameraUnlock.Core.Unity.dll"
 set "MOD_INTERNAL_NAME=SubnauticaHeadTracking"
 set "MOD_VERSION=1.0.0"
 set "STATE_FILE=.headtracking-state.json"
-set "BEPINEX_VERSION=5.4.23.2"
+set "FRAMEWORK_TYPE=BepInEx"
 set "BEPINEX_ARCH=x64"
+set "BEPINEX_VENDOR_ZIP_NAME="
+set "BEPINEX_SUBFOLDER="
 set "MOD_CONTROLS=Controls:&echo   Home    - Recenter head tracking&echo   End     - Toggle head tracking on/off&echo   Page Up - Toggle position tracking on/off"
-set "GOG_IDS="
-set "SEARCH_DIRS="
 :: --- END CONFIG BLOCK ---
 
 call :main %*
 set "_EC=%errorlevel%"
-echo.
-pause
+if not defined YES_FLAG ( echo. & pause )
 exit /b %_EC%
 
 :main
 setlocal enabledelayedexpansion
+
+:: -------- Arg parser (canonical, do not modify) --------
+set "YES_FLAG="
+set "_GIVEN_PATH="
+:parse_args
+if "%~1"=="" goto :args_done
+set "_ARG=%~1"
+if /i "!_ARG!"=="/y"    ( set "YES_FLAG=1" & shift & goto :parse_args )
+if /i "!_ARG!"=="-y"    ( set "YES_FLAG=1" & shift & goto :parse_args )
+if /i "!_ARG!"=="--yes" ( set "YES_FLAG=1" & shift & goto :parse_args )
+if "!_ARG:~0,2!"=="--" ( echo ERROR: unknown flag "!_ARG!" & exit /b 2 )
+if "!_ARG:~0,1!"=="/"  ( echo ERROR: unknown flag "!_ARG!" & exit /b 2 )
+if "!_ARG:~0,1!"=="-"  ( echo ERROR: unknown flag "!_ARG!" & exit /b 2 )
+if not defined _GIVEN_PATH (
+    if exist "!_ARG!\" ( set "_GIVEN_PATH=!_ARG!" & shift & goto :parse_args )
+)
+echo ERROR: unrecognised argument "!_ARG!"
+exit /b 2
+:args_done
 
 echo.
 echo === %MOD_DISPLAY_NAME% - Install ===
 echo.
 
 set "SCRIPT_DIR=%~dp0"
-set "GAME_PATH="
 
-:: --- Find game path ---
-
-:: Check command line argument
-if not "%~1"=="" (
-    if exist "%~1\%GAME_EXE%" (
-        set "GAME_PATH=%~1"
-        goto :found_game
-    )
-    echo ERROR: %GAME_EXE% not found at: "%~1"
-    echo.
+:: -------- Resolve game path via shared shim --------
+set "_SHIM=%SCRIPT_DIR%shared\find-game.ps1"
+if not exist "%_SHIM%" set "_SHIM=%SCRIPT_DIR%..\cameraunlock-core\scripts\find-game.ps1"
+if not exist "%_SHIM%" (
+    echo ERROR: find-game.ps1 not found in shared\ or ..\cameraunlock-core\scripts\.
+    echo If this is a release ZIP, re-download it from GitHub ^(corrupt installer^).
+    echo If this is the dev tree, make sure the cameraunlock-core submodule is checked out.
     exit /b 1
 )
-
-:: Check environment variable
-if defined %ENV_VAR_NAME% (
-    call set "_ENV_PATH=%%%ENV_VAR_NAME%%%"
-    if exist "!_ENV_PATH!\%GAME_EXE%" (
-        set "GAME_PATH=!_ENV_PATH!"
-        goto :found_game
-    )
+set "_SHIM_OUT=%TEMP%\cul-find-%RANDOM%-%RANDOM%.cmd"
+set "_GIVEN_ARG="
+if defined _GIVEN_PATH set "_GIVEN_ARG=-GivenPath "!_GIVEN_PATH!""
+powershell -NoProfile -ExecutionPolicy Bypass -File "%_SHIM%" -GameId %GAME_ID% -OutFile "!_SHIM_OUT!" !_GIVEN_ARG!
+set "_PS_EC=!errorlevel!"
+if not "!_PS_EC!"=="0" (
+    echo.
+    echo ERROR: Could not resolve game install path ^(shim exit code !_PS_EC!^).
+    echo Pass a path explicitly: install.cmd "C:\path\to\game"
+    echo.
+    del "!_SHIM_OUT!" 2>nul
+    exit /b 1
 )
+call "!_SHIM_OUT!"
+del "!_SHIM_OUT!" 2>nul
 
-:: Check Steam
-call :find_steam_game
-if defined GAME_PATH goto :found_game
-
-:: Check GOG
-call :find_gog_game
-if defined GAME_PATH goto :found_game
-
-:: Check Epic
-call :find_epic_game
-if defined GAME_PATH goto :found_game
-
-:: Check common directories
-call :find_game_in_dirs
-if defined GAME_PATH goto :found_game
-
-echo ERROR: Could not find %GAME_DISPLAY_NAME% installation.
-echo.
-echo Please either:
-echo   1. Set %ENV_VAR_NAME% environment variable to your game folder
-echo   2. Run: install.cmd "C:\path\to\game"
-echo.
-exit /b 1
-
-:found_game
 echo Game found: %GAME_PATH%
 echo.
 
-:: --- Check if game is running ---
+:: -------- Game-running check --------
 tasklist /fi "imagename eq %GAME_EXE%" 2>nul | findstr /i "%GAME_EXE%" >nul 2>&1
 if not errorlevel 1 (
     echo ERROR: %GAME_DISPLAY_NAME% is currently running.
@@ -97,37 +91,32 @@ if not errorlevel 1 (
     exit /b 1
 )
 
-:: --- Check BepInEx ---
+:: -------- Prior state: preserve installed_by_us=true across re-installs --------
+set "WE_INSTALLED=false"
+if exist "%GAME_PATH%\%STATE_FILE%" (
+    findstr /c:"installed_by_us" "%GAME_PATH%\%STATE_FILE%" 2>nul | findstr /c:"true" >nul 2>&1
+    if not errorlevel 1 set "WE_INSTALLED=true"
+)
+
+:: -------- Ensure BepInEx --------
 if not exist "%GAME_PATH%\BepInEx\core\BepInEx.dll" (
     echo BepInEx not found. Installing...
     echo.
     call :install_bepinex
     if errorlevel 1 exit /b 1
+    set "WE_INSTALLED=true"
     echo.
-    color 0E
-    echo ========================================
-    echo   BepInEx installed - action required
-    echo ========================================
-    echo.
-    echo BepInEx was just installed but needs to initialize first.
-    echo.
-    echo   1. Start %GAME_DISPLAY_NAME%
-    echo   2. Wait until you reach the main menu
-    echo   3. Close the game
-    echo   4. Come back here and type "install" to continue
-    echo.
-    :bepinex_gate
-    set "_CONFIRM="
-    set /p "_CONFIRM=Type install to continue: "
-    if /i not "!_CONFIRM!"=="install" goto :bepinex_gate
-    echo.
-    color
+    if defined YES_FLAG (
+        echo BepInEx installed. It will initialize on first game launch.
+    ) else (
+        call :prompt_bepinex_init
+    )
 ) else (
-    echo BepInEx found.
+    echo Existing BepInEx detected, skipping loader install, deploying plugin only.
 )
 echo.
 
-:: --- Deploy mod files ---
+:: -------- Deploy mod files --------
 echo Deploying mod files...
 
 set "PLUGINS_PATH=%GAME_PATH%\BepInEx\plugins"
@@ -155,26 +144,8 @@ if "!DEPLOY_FAILED!"=="1" (
     exit /b 1
 )
 
-:: --- Update state file ---
-:: Preserve installed_by_us flag from previous state
-set "WE_INSTALLED=false"
-if exist "%GAME_PATH%\%STATE_FILE%" (
-    findstr /c:"installed_by_us" "%GAME_PATH%\%STATE_FILE%" 2>nul | findstr /c:"true" >nul 2>&1
-    if not errorlevel 1 set "WE_INSTALLED=true"
-)
-
-> "%GAME_PATH%\%STATE_FILE%" (
-    echo {
-    echo   "framework": {
-    echo     "type": "BepInEx",
-    echo     "installed_by_us": !WE_INSTALLED!
-    echo   },
-    echo   "mod": {
-    echo     "name": "%MOD_INTERNAL_NAME%",
-    echo     "version": "%MOD_VERSION%"
-    echo   }
-    echo }
-)
+:: -------- Write state file --------
+call :write_state_file
 
 echo.
 echo ========================================
@@ -193,140 +164,124 @@ echo.
 exit /b 0
 
 :: ============================================
-:: Find game in Steam libraries
+:: Interactive BepInEx init gate (manual-install flow only).
+:: Skipped entirely when /y (launcher/automation) is set.
 :: ============================================
-:find_steam_game
-set "STEAM_PATH="
-
-:: Get Steam install path from registry (64-bit)
-for /f "tokens=2*" %%a in ('reg query "HKLM\SOFTWARE\WOW6432Node\Valve\Steam" /v InstallPath 2^>nul') do set "STEAM_PATH=%%b"
-
-:: Try 32-bit registry
-if not defined STEAM_PATH (
-    for /f "tokens=2*" %%a in ('reg query "HKLM\SOFTWARE\Valve\Steam" /v InstallPath 2^>nul') do set "STEAM_PATH=%%b"
-)
-
-:: Check default Steam library
-if defined STEAM_PATH (
-    if exist "%STEAM_PATH%\steamapps\common\%STEAM_FOLDER_NAME%\%GAME_EXE%" (
-        set "GAME_PATH=%STEAM_PATH%\steamapps\common\%STEAM_FOLDER_NAME%"
-        exit /b 0
-    )
-)
-
-:: Parse libraryfolders.vdf for additional Steam library paths
-if defined STEAM_PATH (
-    set "VDF_FILE=%STEAM_PATH%\steamapps\libraryfolders.vdf"
-    if exist "!VDF_FILE!" (
-        for /f "tokens=1,2 delims=	 " %%a in ('findstr /c:"\"path\"" "!VDF_FILE!" 2^>nul') do (
-            set "_LIB_PATH=%%~b"
-            set "_LIB_PATH=!_LIB_PATH:\\=\!"
-            if exist "!_LIB_PATH!\steamapps\common\%STEAM_FOLDER_NAME%\%GAME_EXE%" (
-                set "GAME_PATH=!_LIB_PATH!\steamapps\common\%STEAM_FOLDER_NAME%"
-                exit /b 0
-            )
-        )
-    )
-)
-
-exit /b 1
+:prompt_bepinex_init
+color 0E
+echo ========================================
+echo   BepInEx installed - action required
+echo ========================================
+echo.
+echo BepInEx was just installed but needs to initialize first.
+echo.
+echo   1. Start %GAME_DISPLAY_NAME%
+echo   2. Wait until you reach the main menu
+echo   3. Close the game
+echo   4. Come back here and type "install" to continue
+echo.
+:bepinex_gate
+set "_CONFIRM="
+set /p "_CONFIRM=Type install to continue: "
+if /i not "!_CONFIRM!"=="install" goto :bepinex_gate
+echo.
+color
+exit /b 0
 
 :: ============================================
-:: Find game in GOG registry
-:: ============================================
-:find_gog_game
-if not defined GOG_IDS exit /b 1
-for %%g in (%GOG_IDS%) do (
-    for /f "tokens=2*" %%a in ('reg query "HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\%%g" /v path 2^>nul') do (
-        if exist "%%b\%GAME_EXE%" ( set "GAME_PATH=%%b" & exit /b 0 )
-    )
-    for /f "tokens=2*" %%a in ('reg query "HKLM\SOFTWARE\GOG.com\Games\%%g" /v path 2^>nul') do (
-        if exist "%%b\%GAME_EXE%" ( set "GAME_PATH=%%b" & exit /b 0 )
-    )
-)
-exit /b 1
-
-:: ============================================
-:: Find game in Epic Games manifests
-:: ============================================
-:find_epic_game
-set "_EPIC_MANIFESTS=%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests"
-if not exist "%_EPIC_MANIFESTS%" exit /b 1
-for %%m in ("%_EPIC_MANIFESTS%\*.item") do (
-    for /f "usebackq delims=" %%l in ("%%m") do (
-        set "_EL=%%l"
-        if not "!_EL:InstallLocation=!"=="!_EL!" (
-            set "_EL=!_EL:*InstallLocation=!"
-            set "_EL=!_EL:~4!"
-            set "_EL=!_EL:~0,-2!"
-            set "_EL=!_EL:\\=\!"
-            if exist "!_EL!\%GAME_EXE%" ( set "GAME_PATH=!_EL!" & exit /b 0 )
-        )
-    )
-)
-exit /b 1
-
-:: ============================================
-:: Find game by scanning common directories
-:: ============================================
-:find_game_in_dirs
-if not defined SEARCH_DIRS exit /b 1
-for %%d in (%SEARCH_DIRS%) do (
-    if exist "%%~d\%GAME_EXE%" ( set "GAME_PATH=%%~d" & exit /b 0 )
-    for /f "delims=" %%p in ('dir /b /ad "%%~d" 2^>nul') do (
-        if exist "%%~d\%%p\%GAME_EXE%" ( set "GAME_PATH=%%~d\%%p" & exit /b 0 )
-        for /f "delims=" %%s in ('dir /b /ad "%%~d\%%p" 2^>nul') do (
-            if exist "%%~d\%%p\%%s\%GAME_EXE%" ( set "GAME_PATH=%%~d\%%p\%%s" & exit /b 0 )
-        )
-    )
-)
-exit /b 1
-
-:: ============================================
-:: Install BepInEx
+:: Install BepInEx (upstream-first, fall back to vendored copy).
+:: Handles both regular and Thunderstore-wrapped (BEPINEX_SUBFOLDER)
+:: variants. See ~/.claude/CLAUDE.md "Vendoring Third-Party Dependencies".
 :: ============================================
 :install_bepinex
-set "BEP_URL=https://github.com/BepInEx/BepInEx/releases/download/v%BEPINEX_VERSION%/BepInEx_win_%BEPINEX_ARCH%_%BEPINEX_VERSION%.zip"
+set "VENDOR_DIR=%SCRIPT_DIR%vendor\bepinex"
+if defined BEPINEX_VENDOR_ZIP_NAME (
+    set "VENDOR_ZIP=%VENDOR_DIR%\%BEPINEX_VENDOR_ZIP_NAME%"
+) else (
+    set "VENDOR_ZIP=%VENDOR_DIR%\BepInEx_win_%BEPINEX_ARCH%.zip"
+)
+set "FETCH_SCRIPT=%VENDOR_DIR%\fetch-latest.ps1"
 set "BEP_ZIP=%TEMP%\BepInEx_install.zip"
+set "LOADER_SOURCE="
+set "USED_UPSTREAM="
 
-echo   Downloading BepInEx v%BEPINEX_VERSION% (%BEPINEX_ARCH%)...
-curl -fL -o "%BEP_ZIP%" "%BEP_URL%"
-if errorlevel 1 (
-    echo   ERROR: Download failed. Check your internet connection.
-    exit /b 1
+if exist "%FETCH_SCRIPT%" (
+    echo   Trying upstream BepInEx, latest within range...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%FETCH_SCRIPT%" -OutputPath "%BEP_ZIP%" >nul 2>&1
+    if not errorlevel 1 (
+        set "LOADER_SOURCE=%BEP_ZIP%"
+        set "USED_UPSTREAM=1"
+        echo   Using upstream BepInEx.
+    )
 )
 
-echo   Extracting to game directory...
-tar -xf "%BEP_ZIP%" -C "%GAME_PATH%"
-if errorlevel 1 (
-    echo   ERROR: Extraction failed.
-    del "%BEP_ZIP%" 2>nul
-    exit /b 1
+if not defined LOADER_SOURCE (
+    if not exist "!VENDOR_ZIP!" (
+        echo   ERROR: Upstream unreachable AND bundled fallback missing at:
+        echo     !VENDOR_ZIP!
+        echo   The installer ZIP is corrupt. Re-download the release.
+        exit /b 1
+    )
+    set "LOADER_SOURCE=!VENDOR_ZIP!"
+    echo   Upstream unreachable, using bundled fallback copy.
 )
-del "%BEP_ZIP%" 2>nul
 
-:: Create plugins directory
+echo   Extracting BepInEx to game directory...
+if defined BEPINEX_SUBFOLDER (
+    set "BEP_TEMP=%TEMP%\BepInEx_extract"
+    if exist "!BEP_TEMP!" rmdir /s /q "!BEP_TEMP!"
+    mkdir "!BEP_TEMP!"
+    "%SystemRoot%\System32\tar.exe" -xf "!LOADER_SOURCE!" -C "!BEP_TEMP!"
+    if errorlevel 1 (
+        echo   ERROR: Extraction failed.
+        if defined USED_UPSTREAM del "%BEP_ZIP%" 2>nul
+        rmdir /s /q "!BEP_TEMP!" 2>nul
+        exit /b 1
+    )
+    xcopy /s /e /y /q "!BEP_TEMP!\%BEPINEX_SUBFOLDER%\*" "%GAME_PATH%\" >nul
+    rmdir /s /q "!BEP_TEMP!"
+) else (
+    "%SystemRoot%\System32\tar.exe" -xf "!LOADER_SOURCE!" -C "%GAME_PATH%"
+    if errorlevel 1 (
+        echo   ERROR: Extraction failed.
+        if defined USED_UPSTREAM del "%BEP_ZIP%" 2>nul
+        exit /b 1
+    )
+)
+if defined USED_UPSTREAM del "%BEP_ZIP%" 2>nul
+
 if not exist "%GAME_PATH%\BepInEx\plugins" mkdir "%GAME_PATH%\BepInEx\plugins"
 
-:: Enable console logging
-if not exist "%GAME_PATH%\BepInEx\config" mkdir "%GAME_PATH%\BepInEx\config"
-> "%GAME_PATH%\BepInEx\config\BepInEx.cfg" (
-    echo [Logging.Console]
-    echo Enabled = true
-    echo.
-    echo [Logging.Disk]
-    echo Enabled = true
+if not exist "%GAME_PATH%\BepInEx\config\BepInEx.cfg" (
+    if not exist "%GAME_PATH%\BepInEx\config" mkdir "%GAME_PATH%\BepInEx\config"
+    > "%GAME_PATH%\BepInEx\config\BepInEx.cfg" (
+        echo [Logging.Console]
+        echo Enabled = true
+        echo.
+        echo [Logging.Disk]
+        echo Enabled = true
+    )
 )
 
-:: Write state file marking that we installed BepInEx
+echo   BepInEx installed successfully!
+exit /b 0
+
+:: ============================================
+:: Write the canonical state file.
+:: ============================================
+:write_state_file
 > "%GAME_PATH%\%STATE_FILE%" (
     echo {
+    echo   "schema_version": 1,
     echo   "framework": {
-    echo     "type": "BepInEx",
-    echo     "installed_by_us": true
+    echo     "type": "%FRAMEWORK_TYPE%",
+    echo     "installed_by_us": !WE_INSTALLED!
+    echo   },
+    echo   "mod": {
+    echo     "id": "%GAME_ID%",
+    echo     "name": "%MOD_INTERNAL_NAME%",
+    echo     "version": "%MOD_VERSION%"
     echo   }
     echo }
 )
-
-echo   BepInEx v%BEPINEX_VERSION% installed successfully!
 exit /b 0

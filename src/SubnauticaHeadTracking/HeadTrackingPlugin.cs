@@ -116,6 +116,7 @@ namespace SubnauticaHeadTracking
         {
             Logger.LogInfo("Starting UDP receiver...");
             staticReceiver = new OpenTrackReceiver();
+            staticReceiver.Log = msg => Logger.LogInfo(msg);
             CurrentPort = ConfigurationManager.UdpPort.Value;
             staticReceiver.Start(CurrentPort);
             Receiver = staticReceiver;
@@ -127,15 +128,9 @@ namespace SubnauticaHeadTracking
             int nextPort = PortRangeBase + ((CurrentPort - PortRangeBase + 1) % PortRangeSize);
 
             staticReceiver.Stop();
-            if (!staticReceiver.Start(nextPort))
-            {
-                ModLogger.LogError($"Failed to bind port {nextPort}, reverting to {CurrentPort}");
-                staticReceiver.Start(CurrentPort);
-                return;
-            }
-
+            staticReceiver.Start(nextPort);
             CurrentPort = nextPort;
-            ModLogger.LogInfo($"UDP port cycled to {CurrentPort} — configure OpenTrack to send to this port");
+            ModLogger.LogInfo($"UDP port cycled to {CurrentPort} - configure OpenTrack to send to this port");
         }
 
         private void InitializeCameraCallback()

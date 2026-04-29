@@ -5,25 +5,27 @@
     Automated release workflow for Subnautica Head Tracking mod.
 
 .DESCRIPTION
-    This script:
-    1. Updates version in csproj
-    2. Generates CHANGELOG from commits
-    3. Commits the version change
-    4. Creates and pushes a git tag to trigger CI release
+    Fully unattended:
+    1. Validate version arg (semver, or major|minor|patch keyword)
+    2. Verify on main, clean tree, tag absent
+    3. Update version in csproj
+    4. pixi run build (release)
+    5. Generate CHANGELOG from commits since last tag
+    6. Commit "Release v<version>"
+    7. Annotated tag v<version>
+    8. Push commits + tag (CI release workflow takes over)
 
 .PARAMETER Version
-    The version to release (e.g., "1.0.0", "1.2.3")
+    Concrete X.Y.Z, or one of: major | minor | patch
 
 .EXAMPLE
-    pixi run release 1.0.0
-
-.NOTES
-    Run via: pixi run release <version>
+    pixi run release patch
+.EXAMPLE
+    pixi run release 1.2.3
 #>
 param(
     [Parameter(Position=0)]
-    [string]$Version = "",
-    [switch]$Force
+    [string]$Version = ""
 )
 
 Set-StrictMode -Version Latest
@@ -40,80 +42,62 @@ Write-Host ""
 
 $currentVersion = Get-CsprojVersion $csprojPath
 
-# If no version provided, show current and exit
 if ([string]::IsNullOrWhiteSpace($Version)) {
     Write-Host "Current version: " -NoNewline -ForegroundColor Yellow
     Write-Host $currentVersion -ForegroundColor White
     Write-Host ""
-    Write-Host "Usage: " -NoNewline -ForegroundColor Yellow
-    Write-Host "pixi run release <version>" -ForegroundColor White
-    Write-Host ""
-    Write-Host "Example: " -NoNewline -ForegroundColor Yellow
-    Write-Host "pixi run release 1.1.0" -ForegroundColor White
+    Write-Host "Usage:   pixi run release <major|minor|patch|X.Y.Z>" -ForegroundColor Yellow
+    Write-Host "Example: pixi run release patch" -ForegroundColor Yellow
     exit 0
 }
 
-# Validate version format
+try {
+    $Version = Resolve-ReleaseVersion -Argument $Version -CurrentVersion $currentVersion
+} catch {
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
 if ($Version -notmatch '^\d+\.\d+\.\d+$') {
-    Write-Host "Error: Invalid version format '$Version'" -ForegroundColor Red
-    Write-Host "Use semantic versioning: X.Y.Z (e.g., 1.0.0, 1.2.3)" -ForegroundColor Yellow
+    Write-Host "Error: '$Version' is not valid semver (X.Y.Z)" -ForegroundColor Red
     exit 1
 }
 
 $tagName = "v$Version"
 
-if (-not $Force) {
-    # Check if we're on main branch
-    $currentBranch = git rev-parse --abbrev-ref HEAD
-    if ($currentBranch -ne "main") {
-        Write-Host "Error: Must be on 'main' branch to release (currently on '$currentBranch')" -ForegroundColor Red
-        exit 1
-    }
+$currentBranch = git rev-parse --abbrev-ref HEAD
+if ($currentBranch -ne "main") {
+    Write-Host "Error: Must be on 'main' branch to release (currently on '$currentBranch')" -ForegroundColor Red
+    exit 1
+}
 
-    # Check for uncommitted changes
-    $status = git status --porcelain
-    if ($status) {
-        Write-Host "Error: Working directory has uncommitted changes" -ForegroundColor Red
-        Write-Host $status -ForegroundColor Gray
-        Write-Host "Please commit or stash changes before releasing" -ForegroundColor Yellow
-        exit 1
-    }
+$status = git status --porcelain
+if ($status) {
+    Write-Host "Error: Working directory has uncommitted changes" -ForegroundColor Red
+    Write-Host $status -ForegroundColor Gray
+    exit 1
+}
 
-    # Check if tag already exists
-    $existingTag = git tag -l $tagName
-    if ($existingTag) {
-        Write-Host "Error: Tag '$tagName' already exists" -ForegroundColor Red
-        exit 1
-    }
-} else {
-    Write-Host "WARNING: --force mode, skipping git checks" -ForegroundColor Yellow
+$existingTag = git tag -l $tagName
+if ($existingTag) {
+    Write-Host "Error: Tag '$tagName' already exists" -ForegroundColor Red
+    exit 1
 }
 
 Write-Host "Current version: $currentVersion" -ForegroundColor Gray
 Write-Host "New version:     $Version" -ForegroundColor Green
 Write-Host ""
 
-# Confirm
-Write-Host "This will:" -ForegroundColor Yellow
-Write-Host "  1. Update version in csproj to $Version" -ForegroundColor White
-Write-Host "  2. Generate CHANGELOG from commits" -ForegroundColor White
-Write-Host "  3. Commit the change" -ForegroundColor White
-Write-Host "  4. Create tag $tagName and push (triggers release workflow)" -ForegroundColor White
-Write-Host ""
-
-$confirm = Read-Host "Continue? (y/N)"
-if ($confirm -ne 'y' -and $confirm -ne 'Y') {
-    Write-Host "Cancelled" -ForegroundColor Yellow
-    exit 0
-}
-
-Write-Host ""
-
-# Step 1: Update version
 Write-Host "Updating version to $Version..." -ForegroundColor Cyan
 Set-CsprojVersion $csprojPath $Version
 
-# Step 2: Generate CHANGELOG
+Write-Host "Building release..." -ForegroundColor Cyan
+pixi run build
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Build failed" -ForegroundColor Red
+    exit 1
+}
+
 Write-Host "Generating CHANGELOG from commits..." -ForegroundColor Cyan
 $changelogPath = Join-Path $projectDir "CHANGELOG.md"
 $hasExistingTags = git tag -l 2>$null
@@ -123,44 +107,33 @@ if (-not $hasExistingTags) {
     Set-Content $changelogPath $firstEntry
     Write-Host "  First release - wrote initial CHANGELOG entry" -ForegroundColor Gray
 } else {
-    $changelogArgs = @{
-        ChangelogPath = $changelogPath
-        Version = $Version
-        ArtifactPaths = @(
+    New-ChangelogFromCommits `
+        -ChangelogPath $changelogPath `
+        -Version $Version `
+        -ArtifactPaths @(
             "src/SubnauticaHeadTracking/",
             "cameraunlock-core",
             "scripts/install.cmd",
             "scripts/uninstall.cmd"
         )
-    }
-    if ($Force) { $changelogArgs.IncludeAll = $true }
-    New-ChangelogFromCommits @changelogArgs
 }
 
-# Step 3: Commit
 Write-Host "Committing changes..." -ForegroundColor Cyan
 git add $csprojPath $changelogPath
 git commit -m "Release v$Version"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Commit failed!" -ForegroundColor Red
+    Write-Host "Commit failed" -ForegroundColor Red
     exit 1
 }
 
-# Step 4: Create annotated tag
 Write-Host "Creating tag $tagName..." -ForegroundColor Cyan
 git tag -a $tagName -m "Release $tagName"
 
-# Step 5: Push
 Write-Host "Pushing to GitHub..." -ForegroundColor Cyan
 git push origin main
 git push origin $tagName
 
 Write-Host ""
-Write-Host "Release $tagName initiated!" -ForegroundColor Green
-Write-Host ""
-Write-Host "The GitHub Actions release workflow will now:" -ForegroundColor Yellow
-Write-Host "  - Build the release" -ForegroundColor White
-Write-Host "  - Create GitHub release with installer + Nexus Mods artifacts" -ForegroundColor White
-Write-Host ""
-Write-Host "Watch progress at:" -ForegroundColor Yellow
+Write-Host "Release $tagName initiated." -ForegroundColor Green
+Write-Host "GitHub Actions will build and publish the release." -ForegroundColor Yellow
 Write-Host "  https://github.com/udkyo/subnautica-head-tracking/actions" -ForegroundColor Cyan

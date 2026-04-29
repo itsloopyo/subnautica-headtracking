@@ -123,7 +123,6 @@ $projectFiles = @{
     "HeadTracking.sln" = "Solution file"
     "Directory.Build.props" = "Build properties"
     "nuget.config" = "NuGet configuration"
-    "manifest.json" = "Mod manifest"
 }
 
 foreach ($file in $projectFiles.Keys) {
