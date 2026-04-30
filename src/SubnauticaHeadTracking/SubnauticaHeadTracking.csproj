@@ -3,7 +3,7 @@
     <TargetFramework>net48</TargetFramework>
     <AssemblyName>SubnauticaHeadTracking</AssemblyName>
     <RootNamespace>SubnauticaHeadTracking</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <LangVersion>9.0</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Nullable>disable</Nullable>
