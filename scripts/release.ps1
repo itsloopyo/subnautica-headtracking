@@ -107,15 +107,28 @@ if (-not $hasExistingTags) {
     Set-Content $changelogPath $firstEntry
     Write-Host "  First release - wrote initial CHANGELOG entry" -ForegroundColor Gray
 } else {
-    New-ChangelogFromCommits `
-        -ChangelogPath $changelogPath `
-        -Version $Version `
-        -ArtifactPaths @(
-            "src/SubnauticaHeadTracking/",
-            "cameraunlock-core",
-            "scripts/install.cmd",
-            "scripts/uninstall.cmd"
-        )
+    try {
+        New-ChangelogFromCommits `
+            -ChangelogPath $changelogPath `
+            -Version $Version `
+            -ArtifactPaths @(
+                "src/SubnauticaHeadTracking/",
+                "cameraunlock-core",
+                "scripts/install.cmd",
+                "scripts/uninstall.cmd"
+            )
+    } catch {
+        Write-Host "  No user-facing commits since last tag - writing maintenance entry" -ForegroundColor Yellow
+        $date = Get-Date -Format 'yyyy-MM-dd'
+        $entry = "## [$Version] - $date`n`n### Changed`n`n- Maintenance release.`n`n"
+        $existing = Get-Content $changelogPath -Raw
+        if ($existing -match '(?s)(# Changelog.*?\n\n)') {
+            $existing = $existing -replace '(?s)(# Changelog.*?\n\n)', "`$1$entry"
+        } else {
+            $existing = $existing -replace '(?s)(# Changelog.*?\n)', "`$1$entry"
+        }
+        Set-Content $changelogPath ($existing.TrimEnd() + "`n") -NoNewline
+    }
 }
 
 Write-Host "Committing changes..." -ForegroundColor Cyan

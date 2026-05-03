@@ -202,10 +202,15 @@ jobs:
             "cameraunlock-core"
           )
 
-          & cameraunlock-core/scripts/generate-release-notes.ps1 `
-            -Version "${{ steps.version.outputs.version }}" `
-            -ArtifactPaths $artifactPaths `
-            -ProjectName "Head Tracking for Subnautica"
+          try {
+            & cameraunlock-core/scripts/generate-release-notes.ps1 `
+              -Version "${{ steps.version.outputs.version }}" `
+              -ArtifactPaths $artifactPaths `
+              -ProjectName "Head Tracking for Subnautica"
+          } catch {
+            Write-Host "Release notes generation failed ($($_.Exception.Message)); writing maintenance fallback." -ForegroundColor Yellow
+            "## What's Changed in v${{ steps.version.outputs.version }}`n`n- Maintenance release." | Out-File -FilePath release-notes.txt -Encoding utf8
+          }
 
       - name: Find release ZIPs
         id: find_zips
