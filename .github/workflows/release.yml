@@ -197,7 +197,9 @@ jobs:
         shell: pwsh
         run: |
           $artifactPaths = @(
-            "src/SubnauticaHeadTracking/"
+            "src/SubnauticaHeadTracking/",
+            "scripts/",
+            "cameraunlock-core"
           )
 
           & cameraunlock-core/scripts/generate-release-notes.ps1 `
