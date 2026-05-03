@@ -22,13 +22,12 @@ $projectRoot = Split-Path -Parent $scriptDir
 
 Import-Module (Join-Path $projectRoot "cameraunlock-core\powershell\DevDeploy.psm1") -Force
 Import-Module (Join-Path $projectRoot "cameraunlock-core\powershell\ModDeployment.psm1") -Force
+$buildOutput = Join-Path $projectRoot "src\SubnauticaHeadTracking\bin\$Configuration\net48"
 $result = Invoke-DevDeployBepInEx `
     -GameId 'subnautica' `
     -GameDisplayName 'Subnautica' `
-    -ProjectRoot $projectRoot `
-    -ProjectName 'SubnauticaHeadTracking' `
+    -BuildOutputPath $buildOutput `
     -ModDllName 'SubnauticaHeadTracking.dll' `
-    -Configuration $Configuration `
     -ExtraDlls @('CameraUnlock.Core.dll', 'CameraUnlock.Core.Unity.dll') `
     -GivenPath $GivenPath `
     -EnsureLoader
