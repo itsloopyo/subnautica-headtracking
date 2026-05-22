@@ -54,10 +54,26 @@ aliases. Backwards compatibility is for shipped public APIs (see the
 Libraries category rule); internal scaffolding gets cut clean.
 
 
+<!-- agent: gitignore -->
+.lab, .claude, our skills, agents.md/claude.md and any MCP servers should be added to the project's .gitignore so they are not tracked in git.
+
+
+<!-- agent: Lab Notes -->
+If there is important project-specific information, it will be found in a .lab/NOTES.md - read this file at the start of each session should it exist.
+
+
 <!-- agent: Pixi rules -->
 In pixi files:
 
 The `project` field is deprecated. Use `workspace` instead.
+
+
+<!-- agent: Debugging -->
+Don't be shy to use Ghidra to help us on our quest to crowbar head tracking into games that aren't built for it. Headless if possible - feel free to run entirely headless, or failing that, write scripts we can execute in Jython. Note, Ghidra is installed, when I run it I run C:\ProgramData\chocolatey\lib\ghidra\tools\ghidra_12.0_PUBLIC\ghidraRun.bat
+
+Similarly ilspy/ilspycmd is installed, and should be used to make our lives easier when working on Unity titles.
+
+pe-sieve64 is present in /c/bin
 
 
 <!-- agent: Head tracking mod doctrine -->
@@ -90,9 +106,13 @@ Non-negotiable:
 - **Isolate tracking from game logic.** Either (1) modify `camera.worldToCameraMatrix` only (rendering path, game reads `camera.transform` for aim), or (2) modify `camera.transform` with save/restore so game logic sees the clean rotation. In C++ engines: save clean camera state before the game's update tick, inject tracking only in the render phase.
 - **Fail fast.** If something fails, let it throw.
 - **CRLF for .cmd files.** `Write` outputs LF. After writing any `.cmd`/`.bat`, run `unix2dos <file>`.
-- **cameraunlock-core** is the shared submodule name. DLLs are `CameraUnlock.Core.*`.
+- **cameraunlock-core** is the shared submodule name. DLLs are `CameraUnlock.Core.*`. It is from https://github.com/itsloopyo/cameraunlock-core, ../cameraunlock-core is the canonical version, that is where any changes must be made. All our mods ingest it from github.com/itsloopyo/cameraunlock-core
 - **Never commit:** `.claude/`, `.pixi/`, `bin/`, `obj/`, `libs/`, `release/`, `.vs/`, `*.user`.
 - **Never use em-dashes (-).** Use normal dashes (-) only. Applies everywhere: code, comments, docs, commit messages, chat.
+- We should endeavour to use as much of cameraunlock-core as benefits us. Similarly we should feed improvements, and shared code back into this library as our mods grow.
+- When creating a new mod from scratch, it should have the version number 0.0.0
+- When asking the user to confirm or check something you are changing, make your changes OBVIOUSLY visible. e.g. instead of "has the marker been repositioned 0.5m" try "is the marker moving from left to right by 5m in an animated loop"
+- Do not ask the user to perform superhuman feats like "turn your head 30degrees and hold for 3s" - do not rely on that level of accuracy from humans.
 
 ---
 
@@ -646,7 +666,7 @@ Each mod's `install.cmd` dispatches to exactly one `:install_<loader>` subroutin
 | BepInExPack (Thunderstore-wrapped) | peak | `bepinex` | `BepInEx/core/BepInEx.dll` | Same as x64; vendor zip extracted through a `BepInExPack_PEAK/` subfolder that must be flattened on install |
 | MelonLoader | green-hell | `melonloader` | `MelonLoader/net35/MelonLoader.dll` (or `net6/`) | `MelonLoader/`, `version.dll`, `dobby.dll`, `NOTICE.txt`; `Mods/`, `UserLibs/`, `UserData/` only if empty after mod files come out |
 | Mono.Cecil patcher | gone-home | `mono-cecil` | `<Managed>/Assembly-CSharp.dll.original` | Restore `.original` over `Assembly-CSharp.dll`, delete `.original`, delete `Mono.Cecil.dll` |
-| Ultimate ASI Loader | dying-light-2 | `asi-loader` | `<exe-dir>/winmm.dll` (renamed from `dinput8.dll`) | `winmm.dll` (or `dinput8.dll`), any `scripts/` stub created by the loader |
+| Ultimate ASI Loader | dying-light-2 | `ultimate-asi-loader` | `<exe-dir>/winmm.dll` (renamed from `dinput8.dll`) | `winmm.dll` (or `dinput8.dll`), any `scripts/` stub created by the loader |
 | REFramework | resident-evil-requiem | `reframework` | `dinput8.dll` + `reframework/` at game root | `dinput8.dll`, `reframework/` |
 | None (shim-only) | bioshock-remastered | - | N/A (the mod DLL *is* the shim - `xinput1_3.dll`) | Just the mod DLL |
 
@@ -1017,65 +1037,32 @@ Existing mods have inconsistent GUIDs (`com.headtracking.obradinn`, `com.<game>.
 
 ## C++ Camera Discovery (REDengine / similar engines)
 
-Lessons from hooking The Witcher 3 and RE:Requiem. Applies to any C++ game without source access.
+For finding the camera in a new C++ engine, see the `port-camera-to-cpp-engine` skill.
 
-### Phase 1 - Infrastructure
+---
 
-1. ASI Loader + DXGI Present hook. Create a temp D3D11 device to read `IDXGISwapChain::Present` from the vtable (index 8). Works for DX12 too since DXGI is shared. Hook with MinHook for a per-frame callback.
-2. Validate stability with just Present + UDP + hotkey poller before adding camera hooks.
+## UE5 (Unreal Engine 5) C++ Hook Notes
 
-### Phase 2 - Find the Camera via RTTI
+### FVector / FRotator are doubles, not floats
 
-1. Scan `.rdata` for RTTI `_TypeDescriptor` strings matching likely class names (`CCustomCamera`, `CCamera`, `CCameraDirector`, `CRenderCamera`, `PlayerCameraController`, …).
-2. Walk `_TypeDescriptor → _RTTICompleteObjectLocator → vtable` (COL is at `vtable[-1]`).
-3. Log the first 8–10 vtable entries per camera class.
+UE 5.0+ ships with Large World Coordinates (LWC) on by default. The canonical `FVector` is `FVector3d` (3 doubles, 24 bytes) and `FRotator` is `FRotator3d` (3 doubles, 24 bytes). The float versions (`FVector3f`, `FRotator3f`) only appear where engine code explicitly opts in.
 
-### Phase 3 - Hook a Virtual Function
-
-**Do not backward-prologue-scan from a known instruction.** That found a function only called during loading - wasted hours.
-
-1. Dump vtable entries 0–9 (entries beyond are often RTTI metadata, identifiable by absurd values).
-2. Hook MinHook from `vfunc[2]` onward - `[0]` is typically destructor/RTTI, `[1]` is type info. Per-frame Update/Tick tends to be `[2]`–`[7]`.
-3. **Preserve the return value.** Use `uintptr_t` return, not `void` - declaring `void` when the real function returns a value corrupts RAX and causes visual corruption (screen split, etc.).
-4. Log `this` and call frequency. If not called after 15s, try the next vfunc.
-
-### Phase 4 - Map the Camera Object
-
-1. Dump `this + 0x000..0x200` as hex + float pairs, ONCE (guard with a counter). Do NOT follow unknown pointers - dereferencing into heap destabilizes the game.
-2. Identify fields by value shape:
-   - **Pointers:** large hex, absurd as floats.
-   - **Position:** 3–4 floats with world-coordinate magnitudes.
-   - **Euler angles:** floats in [-180, 180].
-   - **Identity matrix:** 16 floats on a diagonal.
-   - **FOV:** float ~50–90.
-3. Witcher 3 REDengine layout (for reference):
-   - `+0x000` vtable, `+0x060` position (xyzw=1), `+0x080` roll, `+0x084` pitch, `+0x088` yaw, `+0x0E8` FOV, `+0x140` 4x4 matrix (ineffective).
-
-### Phase 5 - Modify Angles (Delta Approach)
+For any UE5 C++ mod that hooks a function taking `FVector*` / `FRotator*` out-params (or any struct containing them, e.g. `FMinimalViewInfo`), declare the structs as doubles:
 
 ```cpp
-// Pre: undo last frame's head tracking
-*camYaw -= s_prevDYaw; *camPitch -= s_prevDPitch; *camRoll -= s_prevDRoll;
-
-uintptr_t ret = s_originalFunc(thisPtr, a2, a3, a4);  // Game runs with clean angles
-
-// Post: apply tracking
-float dYaw = -headYaw, dPitch = headPitch, dRoll = -headRoll;
-*camYaw += dYaw; *camPitch += dPitch; *camRoll += dRoll;
-s_prevDYaw = dYaw; s_prevDPitch = dPitch; s_prevDRoll = dRoll;
-return ret;
+struct FVector  { double X, Y, Z; };       // 24 bytes
+struct FRotator { double Pitch, Yaw, Roll; }; // 24 bytes
 ```
 
-Do NOT save/restore absolute angles - fights the game's mouse accumulator, mouse gets stuck at pitch clamp boundaries. Store the actual applied delta (with inversions baked in), otherwise undo and apply have mismatched signs.
+**Why it matters:** Declaring them as floats (12 bytes) causes two problems on every call:
 
-### Pitfalls
+1. The engine writes 24 bytes into the 12-byte buffer, overflowing 12 bytes of stack adjacent to the buffer. Silent memory corruption.
+2. The bytes that *do* land in the buffer get read as the wrong fields. One field (typically Yaw) lands on the high half of an adjacent double and happens to decode as a small float that looks plausible; the others decode to ~1e25-1e27 garbage. Add tracker delta on top and the camera spins wildly when those values mod 360.
 
-| Pitfall | Symptom | Fix |
-|---------|---------|-----|
-| Scanning heap memory | Crashes 1–30s after scan | Never scan heap - use RTTI + vfunc hooks, objects come from `this` |
-| Dereferencing pointers found in `.data` | Crashes shortly after | Don't dereference unknown pointers |
-| `void` hook on non-void function | Screen split, visual corruption | Use `uintptr_t`, preserve RAX |
-| Backward prologue scan | Hooks a load-only function | Use vtable vfuncs |
-| Storing raw head values, applying inverted | Accumulation drift | Store the delta actually applied |
-| Writing absolute angles | Mouse stuck at pitch clamps | Use delta add/undo |
-| `__try/__except` around bad writes | Crashes still happen | SEH only helps for read probes, not downstream effects of bad writes |
+**Symptom that points here:** rotation/position field values in the 1e10-1e27 range or values that change shape per-call by orders of magnitude. If only one of three axes looks sane and the others are huge, it's almost always this.
+
+Confirmed in Subnautica 2 (UE 5.6.1). Will apply to every future UE5 C++ mod unless the specific build has disabled LWC, which is rare. Verify by dumping `loc_post` from a known position (e.g. spawn) - if Y and Z look sensible in meters and X is ~1e12, the struct is wrong.
+
+### `GetPlayerViewPoint` is the wrong hook target
+
+Even with the structs correct: `APlayerController::GetPlayerViewPoint` is read by weapons, AI sight checks, projectile spawning, raycasts. Modifying it violates the "zero impact on game logic" rule from the Camera System section. Use the pre/post + render-phase pattern from "C++ Pre/Post Hook" above and inject into the view-matrix path, not the game-query path.
