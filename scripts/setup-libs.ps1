@@ -1,88 +1,81 @@
 #!/usr/bin/env pwsh
-# Setup Subnautica DLLs - validates and installs dependencies
-# Automatically installs BepInEx if not present
+# Populates src/SubnauticaHeadTracking/libs/ for a game-free build.
+# BepInEx DLLs come from the committed vendor zip. Unity reference stubs are
+# compiled from the checked-in UnityStubs.cs. No Subnautica installation needed.
 
-$ErrorActionPreference = "Stop"
-$ProgressPreference = "SilentlyContinue"
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
-Write-Host "Checking Subnautica setup..." -ForegroundColor Cyan
+$scriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot  = Split-Path -Parent $scriptDir
+$libsPath     = Join-Path $projectRoot 'src\SubnauticaHeadTracking\libs'
+$vendorZip    = Join-Path $projectRoot 'vendor\bepinex\BepInEx_win_x64.zip'
+$stubSource   = Join-Path $libsPath 'UnityStubs.cs'
 
-# Import shared modules
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$projectRoot = Split-Path -Parent $scriptDir
-$sharedModulesPath = Join-Path $projectRoot "cameraunlock-core\powershell"
-Import-Module (Join-Path $sharedModulesPath "GamePathDetection.psm1") -Force
-Import-Module (Join-Path $sharedModulesPath "ModLoaderSetup.psm1") -Force
+if (-not (Test-Path $vendorZip)) { throw "Vendored BepInEx not found at $vendorZip" }
+if (-not (Test-Path $stubSource)) { throw "UnityStubs.cs not found at $libsPath" }
 
-$gameId = 'Subnautica'
-$config = Get-GameConfig -GameId $gameId
+New-Item -ItemType Directory -Path $libsPath -Force | Out-Null
 
-# Find game installation
-$gamePath = Find-GamePath -GameId $gameId
+Write-Host "Bootstrapping build dependencies (no game install required)..." -ForegroundColor Cyan
 
-if (-not $gamePath) {
-    Write-GameNotFoundError -GameName 'Subnautica' -EnvVar $config.EnvVar -SteamFolder $config.SteamFolder
-    exit 1
-}
+# Wipe libs/ except the tracked stub source so stale game DLLs can't mask CI parity.
+Get-ChildItem -Path $libsPath -Force |
+    Where-Object { $_.Name -ne 'UnityStubs.cs' } |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
-Write-Host "Found Subnautica at: $gamePath" -ForegroundColor Green
-
-# Verify game DLLs exist
-$managedPath = Get-ManagedPath -GamePath $gamePath -DataFolder $config.DataFolder
-if (Test-Path $managedPath) {
-    Write-Host "Game DLLs found at: $managedPath" -ForegroundColor Green
-} else {
-    Write-Host "ERROR: Managed folder not found at $managedPath" -ForegroundColor Red
-    exit 1
-}
-
-# Install BepInEx if not present (uses shared module)
-# Subnautica uses BepInEx 5.x (stable) with x64 architecture
-$bepinexResult = Install-BepInEx -GamePath $gamePath -Architecture x64 -MajorVersion 5 -EnableConsole $true
-
-if ($bepinexResult.AlreadyInstalled) {
-    Write-Host "BepInEx found at: $(Get-BepInExCorePath -GamePath $gamePath)" -ForegroundColor Green
-}
-
-# Copy required DLLs to local libs folder for compilation
-$libsDir = Join-Path $projectRoot "src\SubnauticaHeadTracking\libs"
-if (-not (Test-Path $libsDir)) {
-    New-Item -ItemType Directory -Path $libsDir -Force | Out-Null
-}
-
-# BepInEx DLLs
-$bepinexCorePath = Get-BepInExCorePath -GamePath $gamePath
-$bepinexDlls = @("BepInEx.dll", "0Harmony.dll")
-foreach ($dll in $bepinexDlls) {
-    $source = Join-Path $bepinexCorePath $dll
-    if (Test-Path $source) {
-        Copy-Item $source $libsDir -Force
-        Write-Host "  Copied $dll (BepInEx)" -ForegroundColor Gray
-    } else {
-        Write-Warning "  Not found: $source"
+# BepInEx from vendor zip
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$tempDir = Join-Path $env:TEMP ("sub-bep-" + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+try {
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($vendorZip, $tempDir)
+    foreach ($dll in @('BepInEx.dll', '0Harmony.dll')) {
+        $src = Join-Path $tempDir "BepInEx\core\$dll"
+        if (-not (Test-Path $src)) { throw "$dll not found in vendor zip at BepInEx\core\" }
+        Copy-Item $src (Join-Path $libsPath $dll) -Force
+        Write-Host "  BepInEx: $dll" -ForegroundColor Gray
     }
+} finally {
+    Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Unity/game DLLs
-$managedDlls = @(
-    "UnityEngine.dll",
-    "UnityEngine.CoreModule.dll",
-    "UnityEngine.IMGUIModule.dll",
-    "UnityEngine.InputLegacyModule.dll",
-    "UnityEngine.PhysicsModule.dll",
-    "UnityEngine.TextRenderingModule.dll",
-    "UnityEngine.UI.dll",
-    "UnityEngine.UIModule.dll"
-)
-foreach ($dll in $managedDlls) {
-    $source = Join-Path $managedPath $dll
-    if (Test-Path $source) {
-        Copy-Item $source $libsDir -Force
-        Write-Host "  Copied $dll" -ForegroundColor Gray
-    } else {
-        Write-Warning "  Not found: $source"
-    }
+# Unity reference stubs compiled from UnityStubs.cs
+function Build-Stub([string]$assemblyName, [string]$compileItem) {
+    $proj = @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>11.0</LangVersion>
+    <AssemblyName>$assemblyName</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>CS0169;CS0649;CS0067;CS0660;CS0661</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$compileItem" />
+  </ItemGroup>
+</Project>
+"@
+    $projPath = Join-Path $libsPath "Stub_$assemblyName.csproj"
+    $proj | Out-File -FilePath $projPath -Encoding utf8
+    dotnet build $projPath -c Release -o $libsPath --nologo -v q
+    if ($LASTEXITCODE -ne 0) { throw "Failed to build stub $assemblyName" }
+    Remove-Item $projPath -ErrorAction SilentlyContinue
+    Write-Host "  Stub: $assemblyName.dll" -ForegroundColor Gray
 }
 
-Write-Host ""
-Write-Host "Setup verified! Ready to build." -ForegroundColor Green
+Build-Stub 'UnityEngine' 'UnityStubs.cs'
+
+$emptySource = Join-Path $libsPath 'EmptyStub.cs'
+'// Empty stub assembly' | Out-File -FilePath $emptySource -Encoding utf8
+foreach ($m in @(
+    'UnityEngine.CoreModule', 'UnityEngine.IMGUIModule', 'UnityEngine.PhysicsModule',
+    'UnityEngine.UIModule', 'UnityEngine.TextRenderingModule',
+    'UnityEngine.InputLegacyModule', 'UnityEngine.UI'
+)) { Build-Stub $m 'EmptyStub.cs' }
+
+Remove-Item $emptySource -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $libsPath '*.deps.json') -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $libsPath '*.pdb')        -Force -ErrorAction SilentlyContinue
+
+Write-Host "Build dependencies ready." -ForegroundColor Green

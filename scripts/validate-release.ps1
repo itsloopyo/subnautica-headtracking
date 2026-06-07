@@ -47,6 +47,25 @@ if ($LASTEXITCODE -eq 0 -and $tagExists) {
 }
 Write-Host "✅ Tag v$version does not yet exist" -ForegroundColor Green
 
+# Check 5: Verify launcher-manifest.json exists, parses, and matches the csproj version
+$manifestPath = Join-Path $projectDir "launcher-manifest.json"
+if (-not (Test-Path $manifestPath)) {
+    Write-Host "❌ FAIL: launcher-manifest.json does not exist" -ForegroundColor Red
+    exit 1
+}
+try {
+    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+} catch {
+    Write-Host "❌ FAIL: launcher-manifest.json is not valid JSON: $_" -ForegroundColor Red
+    exit 1
+}
+if ($manifest.mod_info.version -ne $version) {
+    Write-Host "❌ FAIL: launcher-manifest.json mod_info.version '$($manifest.mod_info.version)' does not match csproj version '$version'" -ForegroundColor Red
+    Write-Host "release.ps1 stamps this automatically; if editing by hand keep them in sync" -ForegroundColor Yellow
+    exit 1
+}
+Write-Host "✅ launcher-manifest.json present, valid, and version matches" -ForegroundColor Green
+
 Write-Host ""
 Write-Host "🎉 All validation checks passed!" -ForegroundColor Green
 Write-Host ""

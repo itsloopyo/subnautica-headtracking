@@ -73,6 +73,21 @@ foreach ($script in @("install.cmd", "uninstall.cmd")) {
     Write-Host "  $script" -ForegroundColor Green
 }
 
+# Launcher manifest - the contract lopari consumes to deploy without parsing
+# scripts. The launcher reads it from the ZIP root as launcher-manifest.json.
+$manifestPath = Join-Path $projectDir "launcher-manifest.json"
+if (-not (Test-Path $manifestPath)) {
+    throw "Launcher manifest not found: $manifestPath"
+}
+$stagedManifest = Join-Path $ghStagingDir "launcher-manifest.json"
+Copy-Item $manifestPath -Destination $stagedManifest -Force
+# csproj is the version source of truth; stamp the shipped manifest's
+# mod_info.version so it can never disagree with the built DLL.
+$manifestText = Get-Content $stagedManifest -Raw
+$manifestText = $manifestText -replace '("mod_info":\s*\{[^}]*?"version":\s*")[^"]*(")', "`${1}$version`$2"
+Set-Content $stagedManifest $manifestText -NoNewline
+Write-Host "  launcher-manifest.json (version $version)" -ForegroundColor Green
+
 # Copy mod DLLs to plugins subfolder
 $pluginsDir = Join-Path $ghStagingDir "plugins"
 New-Item -ItemType Directory -Path $pluginsDir -Force | Out-Null

@@ -91,6 +91,11 @@ Write-Host ""
 Write-Host "Updating version to $Version..." -ForegroundColor Cyan
 Set-CsprojVersion $csprojPath $Version
 
+$manifestPath = Join-Path $projectDir "launcher-manifest.json"
+$manifestText = Get-Content $manifestPath -Raw
+$manifestText = $manifestText -replace '("mod_info":\s*\{[^}]*?"version":\s*")[^"]*(")', "`${1}$Version`$2"
+Set-Content $manifestPath $manifestText -NoNewline
+
 Write-Host "Building release..." -ForegroundColor Cyan
 pixi run build
 if ($LASTEXITCODE -ne 0) {
@@ -132,7 +137,7 @@ if (-not $hasExistingTags) {
 }
 
 Write-Host "Committing changes..." -ForegroundColor Cyan
-git add $csprojPath $changelogPath
+git add $csprojPath $changelogPath $manifestPath
 git commit -m "Release v$Version"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Commit failed" -ForegroundColor Red
