@@ -27,6 +27,11 @@ release/
 # AI tooling
 .claude/
 .millhouse/
+.lab/
+CLAUDE.md
+AGENTS.md
+.mcp.json
+mcp.json
 
 # OS
 .DS_Store
