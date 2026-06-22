@@ -29,6 +29,13 @@ namespace SubnauticaHeadTracking.State
         public static bool IsPositionEnabled => Mode != TrackingMode.RotationOnly;
 
         /// <summary>
+        /// When true, yaw rotates around world up (gravity) instead of the camera-local
+        /// up axis. Defaults to false (camera-local) which is horizon-independent and so
+        /// behaves correctly while swimming at any orientation.
+        /// </summary>
+        public static bool WorldSpaceYaw { get; private set; } = false;
+
+        /// <summary>
         /// Toggles tracking enabled/disabled state.
         /// </summary>
         public static void ToggleTracking()
@@ -57,6 +64,15 @@ namespace SubnauticaHeadTracking.State
                 _ => Mode.ToString()
             };
             Logger.LogInfo($"Tracking mode: {desc}");
+        }
+
+        /// <summary>
+        /// Toggles yaw between camera-local and world-space (gravity-aligned).
+        /// </summary>
+        public static void ToggleYawMode()
+        {
+            WorldSpaceYaw = !WorldSpaceYaw;
+            Logger.LogInfo($"Yaw mode: {(WorldSpaceYaw ? "world-space (gravity-aligned)" : "camera-local")}");
         }
     }
 }

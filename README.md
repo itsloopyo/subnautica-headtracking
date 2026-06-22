@@ -74,7 +74,8 @@ Two equivalent binding sets - use whichever your keyboard has:
 | Recenter            | `Home`      | `Ctrl+Shift+T`  |
 | Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
 | Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
-| Cycle UDP port      | `Page Down` | `Ctrl+Shift+H`  |
+| Toggle yaw mode     | `Page Down` | `Ctrl+Shift+H`  |
+| Cycle UDP port      | `Insert`    | `Ctrl+Shift+U`  |
 
 `Page Up` / `Ctrl+Shift+G` cycles tracking mode:
 
@@ -83,7 +84,9 @@ Two equivalent binding sets - use whichever your keyboard has:
 3. Rotational tracking disabled, positional tracking enabled
 4. Back to normal
 
-`Page Down` / `Ctrl+Shift+H` cycles the UDP listen port through 4242 → 4243 → 4244 → 4245 → 4242 (useful for couch co-op with multiple game instances on the same PC).
+`Page Down` / `Ctrl+Shift+H` toggles yaw between camera-local (default) and world-space (gravity-aligned). Camera-local is horizon-independent, so it behaves correctly while swimming at any orientation; world-space keeps yaw level with the horizon when you are upright.
+
+`Insert` / `Ctrl+Shift+U` cycles the UDP listen port through 4242 → 4243 → 4244 → 4245 → 4242 (useful for couch co-op with multiple game instances on the same PC).
 
 ## Configuration
 
@@ -113,7 +116,8 @@ RollInvert = false
 Toggle = End                 # Enable/disable tracking
 Recenter = Home              # Set current position as neutral
 CycleTrackingMode = PageUp   # Cycle tracking mode (full → rotation only → position only)
-CyclePort = PageDown         # Cycle UDP port 4242-4245
+ToggleYawMode = PageDown     # Toggle yaw: camera-local <-> world-space
+CyclePort = Insert           # Cycle UDP port 4242-4245
 
 [Advanced]
 SmoothingFactor = 0.0        # Rotation smoothing (0 = instant, higher = smoother)

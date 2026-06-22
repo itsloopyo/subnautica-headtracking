@@ -27,6 +27,7 @@ namespace SubnauticaHeadTracking.Config
         public static ConfigEntry<KeyCode> ToggleHotkey { get; private set; }
         public static ConfigEntry<KeyCode> RecenterHotkey { get; private set; }
         public static ConfigEntry<KeyCode> CycleTrackingModeHotkey { get; private set; }
+        public static ConfigEntry<KeyCode> ToggleYawModeHotkey { get; private set; }
         public static ConfigEntry<KeyCode> CyclePortHotkey { get; private set; }
 
         public static ConfigEntry<float> SmoothingFactor { get; private set; }
@@ -170,10 +171,17 @@ namespace SubnauticaHeadTracking.Config
                 "Hotkey to cycle tracking mode: full → rotation only (position disabled) → position only (rotation disabled) → full."
             );
 
+            ToggleYawModeHotkey = config.Bind(
+                "Hotkeys",
+                "ToggleYawMode",
+                KeyCode.PageDown,
+                "Hotkey to toggle yaw between camera-local and world-space (gravity-aligned)."
+            );
+
             CyclePortHotkey = config.Bind(
                 "Hotkeys",
                 "CyclePort",
-                KeyCode.PageDown,
+                KeyCode.Insert,
                 "Cycle UDP listen port through 4242-4245. For couch co-op with multiple game instances on the same PC."
             );
 

@@ -19,6 +19,7 @@ namespace SubnauticaHeadTracking.Input
         private static KeyCode _cachedToggleHotkey;
         private static KeyCode _cachedRecenterHotkey;
         private static KeyCode _cachedCycleTrackingModeHotkey;
+        private static KeyCode _cachedToggleYawModeHotkey;
         private static KeyCode _cachedCyclePortHotkey;
         private static bool _cacheInitialized = false;
 
@@ -48,6 +49,7 @@ namespace SubnauticaHeadTracking.Input
                 _cachedToggleHotkey = Config.ConfigurationManager.ToggleHotkey.Value;
                 _cachedRecenterHotkey = Config.ConfigurationManager.RecenterHotkey.Value;
                 _cachedCycleTrackingModeHotkey = Config.ConfigurationManager.CycleTrackingModeHotkey.Value;
+                _cachedToggleYawModeHotkey = Config.ConfigurationManager.ToggleYawModeHotkey.Value;
                 _cachedCyclePortHotkey = Config.ConfigurationManager.CyclePortHotkey.Value;
                 _cacheInitialized = true;
             }
@@ -75,9 +77,16 @@ namespace SubnauticaHeadTracking.Input
                 HandleCycleTrackingModeHotkey();
             }
 
-            // Cycle UDP port: Page Down or Ctrl+Shift+H
-            if (UnityEngine.Input.GetKeyDown(_cachedCyclePortHotkey)
+            // Toggle yaw mode (world ↔ local): Page Down or Ctrl+Shift+H
+            if (UnityEngine.Input.GetKeyDown(_cachedToggleYawModeHotkey)
                 || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.H)))
+            {
+                State.TrackingState.ToggleYawMode();
+            }
+
+            // Cycle UDP port: Insert or Ctrl+Shift+U
+            if (UnityEngine.Input.GetKeyDown(_cachedCyclePortHotkey)
+                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.U)))
             {
                 HeadTrackingPlugin.CyclePort();
             }

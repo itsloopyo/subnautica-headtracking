@@ -142,7 +142,16 @@ namespace SubnauticaHeadTracking.Camera
             // Build head rotation with correct composition order: yaw → pitch → roll
             // in view-space (right-to-left multiplication). This prevents pitch from
             // appearing as roll at extreme yaw angles.
-            Quaternion yawQ = Quaternion.AngleAxis(CurrentYaw, Vector3.up);
+            //
+            // World-space yaw rotates about world up expressed in this view's space
+            // (OriginalViewMatrix maps world up into the view frame the head rotation
+            // is applied in). Keeping it as the innermost yaw axis reproduces the
+            // decomposed convention: at the horizon world up maps to view up and the
+            // two modes coincide; looking straight down it becomes a view-axis spin.
+            Vector3 yawAxis = State.TrackingState.WorldSpaceYaw
+                ? OriginalViewMatrix.MultiplyVector(Vector3.up)
+                : Vector3.up;
+            Quaternion yawQ = Quaternion.AngleAxis(CurrentYaw, yawAxis);
             Quaternion pitchQ = Quaternion.AngleAxis(CurrentPitch, Vector3.right);
             Quaternion rollQ = Quaternion.AngleAxis(-CurrentRoll, Vector3.forward);
             Quaternion headRotUnity = rollQ * pitchQ * yawQ;

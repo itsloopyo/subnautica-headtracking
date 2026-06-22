@@ -139,6 +139,7 @@ namespace UnityEngine {
         public override bool Equals(object other) => false;
         public override int GetHashCode() => 0;
         public Vector3 MultiplyPoint3x4(Vector3 point) => default;
+        public Vector3 MultiplyVector(Vector3 vector) => default;
         public Matrix4x4 inverse => default;
         public Quaternion rotation => default;
         public Vector3 lossyScale => default;
@@ -594,7 +595,7 @@ namespace UnityEngine.SceneManagement {
         public static Scene GetActiveScene() => default;
         public static void LoadScene(string sceneName) { }
         public static void LoadScene(int sceneBuildIndex) { }
-        public static event System.Action<Scene, LoadSceneMode> sceneLoaded;
+        public static event UnityEngine.Events.UnityAction<Scene, LoadSceneMode> sceneLoaded;
     }
 }
 namespace UnityEngine.Events {
@@ -602,6 +603,7 @@ namespace UnityEngine.Events {
     public class UnityEvent<T0> { public void AddListener(UnityAction<T0> call) { } public void RemoveListener(UnityAction<T0> call) { } public void Invoke(T0 arg0) { } }
     public delegate void UnityAction();
     public delegate void UnityAction<T0>(T0 arg0);
+    public delegate void UnityAction<T0, T1>(T0 arg0, T1 arg1);
 }
 namespace UnityEngine.UI {
     public abstract class Graphic : UnityEngine.Behaviour {
