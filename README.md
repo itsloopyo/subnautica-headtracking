@@ -8,6 +8,7 @@ An **unofficial** BepInEx mod that adds head tracking support to Subnautica usin
 
 - **Decoupled look + aim**: Look around freely with your head while your aim stays independent
 - **6DOF head tracking**: Full rotation (yaw, pitch, roll) and positional tracking (X, Y, Z) via OpenTrack UDP protocol
+- **World or camera-local yaw**: Toggle between gravity-aligned and horizon-independent (swim-safe) yaw on the fly
 
 ## Requirements
 
@@ -128,10 +129,10 @@ PositionSensitivityX = 2.0   # Lateral sensitivity (0.0-3.0)
 PositionSensitivityY = 2.0   # Vertical sensitivity (0.0-3.0)
 PositionSensitivityZ = 2.0   # Depth sensitivity (0.0-3.0)
 PositionLimitX = 0.30        # Max lateral offset in meters (0.01-0.5)
-PositionLimitY = 0.05        # Max upward offset in meters (0.0-0.5)
-PositionLimitYDown = 0.0     # Max downward offset in meters (0.0-0.5)
+PositionLimitY = 0.15        # Max upward offset in meters (0.0-0.5)
+PositionLimitYDown = 0.01    # Max downward offset in meters (0.0-0.5)
 PositionLimitZ = 0.40        # Max forward offset in meters (0.01-0.5)
-PositionLimitZBack = 0.10    # Max backward offset in meters (0.01-0.5)
+PositionLimitZBack = 0.02    # Max backward offset in meters (0.01-0.5)
 PositionSmoothing = 0.15     # Position smoothing (0.0-1.0)
 ```
 
