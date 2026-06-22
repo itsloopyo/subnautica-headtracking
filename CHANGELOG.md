@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.2.0] - 2026-06-22
+
+### Added
+
+- add world/local yaw toggle, fix PGDN binding collision
+- guard the .original backup against patched assemblies
+- let Write-DeploymentSuccess take a full -Controls list
+
+### Changed
+
+- per-marker ping reprojection through real view matrices
+
+### Fixed
+
+- keep CyclePort on PageDown, move yaw toggle to Insert
+- gate ping compensation on active view-matrix override
+- show complete, accurate controls in pixi install and install.cmd
+- surface full control set via shared -Controls; bump core
+- subscribe Camera.onPreCull via reflection for SRP-only Unity 6
+
 ## [1.1.3] - 2026-06-07
 
 ### Added
