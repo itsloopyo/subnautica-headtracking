@@ -77,16 +77,16 @@ namespace SubnauticaHeadTracking.Input
                 HandleCycleTrackingModeHotkey();
             }
 
-            // Toggle yaw mode (world ↔ local): Page Down or Ctrl+Shift+H
+            // Toggle yaw mode (world ↔ local): Insert or Ctrl+Shift+U
             if (UnityEngine.Input.GetKeyDown(_cachedToggleYawModeHotkey)
-                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.H)))
+                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.U)))
             {
                 State.TrackingState.ToggleYawMode();
             }
 
-            // Cycle UDP port: Insert or Ctrl+Shift+U
+            // Cycle UDP port: Page Down or Ctrl+Shift+H
             if (UnityEngine.Input.GetKeyDown(_cachedCyclePortHotkey)
-                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.U)))
+                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.H)))
             {
                 HeadTrackingPlugin.CyclePort();
             }

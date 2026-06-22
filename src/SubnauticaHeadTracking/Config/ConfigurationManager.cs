@@ -174,14 +174,14 @@ namespace SubnauticaHeadTracking.Config
             ToggleYawModeHotkey = config.Bind(
                 "Hotkeys",
                 "ToggleYawMode",
-                KeyCode.PageDown,
+                KeyCode.Insert,
                 "Hotkey to toggle yaw between camera-local and world-space (gravity-aligned)."
             );
 
             CyclePortHotkey = config.Bind(
                 "Hotkeys",
                 "CyclePort",
-                KeyCode.Insert,
+                KeyCode.PageDown,
                 "Cycle UDP listen port through 4242-4245. For couch co-op with multiple game instances on the same PC."
             );
 
