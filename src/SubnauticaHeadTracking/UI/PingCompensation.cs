@@ -1,5 +1,4 @@
 using System;
-using CameraUnlock.Core.Unity.Extensions;
 using UnityEngine;
 using SubnauticaHeadTracking.Integration;
 
@@ -51,28 +50,40 @@ namespace SubnauticaHeadTracking.UI
 
         /// <summary>
         /// Repositions all ping children to compensate for head tracking rotation and position.
-        /// Uses a fixed 30m reference distance for projection — at typical ping distances
+        ///
+        /// Each ping is reprojected individually: its game-set screen position encodes a clean
+        /// view-space direction, which is reconstructed, placed at a fixed reference distance,
+        /// and projected through BOTH the clean and the head-tracked view+projection matrices.
+        /// The ping is shifted by the difference. This is per-marker (so off-centre pings move
+        /// correctly, not just by the centre's offset), matrix-driven (so it tracks pitch, yaw -
+        /// local OR world-space - roll, and the positional lean automatically), and exact-identity
+        /// when no head rotation is applied (clean and tracked matrices coincide, delta is zero).
+        ///
+        /// A fixed 30m reference distance is used for the lean parallax: at typical ping distances
         /// (10-500m) the parallax from a 0.4m lean is under 1 degree, which is sufficient.
         /// </summary>
-        internal static void Reposition(UnityEngine.Camera cam, float yaw, float pitch, float roll)
+        internal static void Reposition(UnityEngine.Camera cam)
         {
             if (_pingCanvasTransform == null) return;
 
-            // Compute center offset using WorldToScreenPoint projection at a fixed reference distance
-            Vector2 screenOffset = CanvasCompensation.CalculateAimScreenOffset(cam, cam.transform.forward, PingReferenceDistance, 1f);
-
-            // Convert from screen pixels to canvas units
             float canvasWidth = _pingCanvasTransform.rect.width;
             float canvasHeight = _pingCanvasTransform.rect.height;
             float halfWidth = canvasWidth * 0.5f;
             float halfHeight = canvasHeight * 0.5f;
-            float offsetX = screenOffset.x * (canvasWidth / Screen.width);
-            float offsetY = screenOffset.y * (canvasHeight / Screen.height);
+            if (halfWidth <= 0f || halfHeight <= 0f) return;
 
-            // Roll: pre-calculate rotation values (negate to match view matrix convention)
-            float rollRad = -roll * Mathf.Deg2Rad;
-            float cosRoll = Mathf.Cos(rollRad);
-            float sinRoll = Mathf.Sin(rollRad);
+            // Clean (game) and head-tracked view+projection matrices. OriginalViewMatrix is the
+            // game-computed view captured this frame before head tracking was applied; the camera's
+            // current worldToCameraMatrix is the head-tracked override.
+            Matrix4x4 proj = cam.projectionMatrix;
+            Matrix4x4 cleanVP = proj * Camera.CameraRotationApplicator.OriginalViewMatrix;
+            Matrix4x4 trackedVP = proj * cam.worldToCameraMatrix;
+
+            // Tangent half-extents, for reconstructing a clean world direction from a ping's NDC.
+            float tanV = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            float tanH = tanV * cam.aspect;
+            Vector3 camPos = cam.transform.position;
+            Quaternion camRot = cam.transform.rotation;
 
             int childCount = _pingCanvasTransform.childCount;
             for (int i = 0; i < childCount; i++)
@@ -83,19 +94,34 @@ namespace SubnauticaHeadTracking.UI
                 RectTransform rectTransform = child as RectTransform;
                 if (rectTransform == null) continue;
 
-                // Get position relative to canvas center
                 Vector2 pos = rectTransform.anchoredPosition;
-                float relX = pos.x - halfWidth;
-                float relY = pos.y - halfHeight;
+                float ndcX = (pos.x - halfWidth) / halfWidth;
+                float ndcY = (pos.y - halfHeight) / halfHeight;
 
-                // Apply roll rotation around canvas center
-                float rotatedRelX = relX * cosRoll - relY * sinRoll;
-                float rotatedRelY = relX * sinRoll + relY * cosRoll;
+                // Reconstruct the world point this ping currently projects to (clean camera),
+                // at the fixed reference distance. transform-local forward is +Z, so a centre
+                // ping (ndc 0,0) maps to camRot * (0,0,1) = camera forward.
+                Vector3 localDir = new Vector3(ndcX * tanH, ndcY * tanV, 1f);
+                Vector3 worldPoint = camPos + (camRot * localDir).normalized * PingReferenceDistance;
+                var worldPoint4 = new Vector4(worldPoint.x, worldPoint.y, worldPoint.z, 1f);
 
-                // Apply center offset and convert back to canvas coordinates
-                rectTransform.anchoredPosition = new Vector2(
-                    rotatedRelX + offsetX + halfWidth,
-                    rotatedRelY + offsetY + halfHeight);
+                Vector4 trackedClip = trackedVP * worldPoint4;
+                if (trackedClip.w <= 0f)
+                {
+                    // Ping is behind the head-tracked view (extreme turn). Park it off-screen.
+                    rectTransform.anchoredPosition = new Vector2(canvasWidth * 10f, pos.y);
+                    continue;
+                }
+
+                Vector4 cleanClip = cleanVP * worldPoint4;
+                float cleanW = cleanClip.w != 0f ? cleanClip.w : 1f;
+
+                // Shift by (tracked - clean) projection so any reconstruction/mapping bias cancels
+                // and zero head rotation yields zero movement.
+                float deltaX = (trackedClip.x / trackedClip.w - cleanClip.x / cleanW) * halfWidth;
+                float deltaY = (trackedClip.y / trackedClip.w - cleanClip.y / cleanW) * halfHeight;
+
+                rectTransform.anchoredPosition = new Vector2(pos.x + deltaX, pos.y + deltaY);
             }
         }
     }

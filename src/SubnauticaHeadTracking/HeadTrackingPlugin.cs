@@ -277,7 +277,7 @@ namespace SubnauticaHeadTracking
             if (Mathf.Abs(yaw) < 0.01f && Mathf.Abs(pitch) < 0.01f && Mathf.Abs(roll) < 0.01f)
                 return;
 
-            UI.PingCompensation.Reposition(cam, yaw, pitch, roll);
+            UI.PingCompensation.Reposition(cam);
         }
 
         private void LogStartupInformation()
