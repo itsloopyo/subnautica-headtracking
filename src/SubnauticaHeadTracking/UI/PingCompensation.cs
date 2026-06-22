@@ -113,13 +113,14 @@ namespace SubnauticaHeadTracking.UI
                     continue;
                 }
 
+                // worldPoint is reconstructed in front of the clean camera (localDir.z = +1),
+                // so cleanClip.w is always positive.
                 Vector4 cleanClip = cleanVP * worldPoint4;
-                float cleanW = cleanClip.w != 0f ? cleanClip.w : 1f;
 
                 // Shift by (tracked - clean) projection so any reconstruction/mapping bias cancels
                 // and zero head rotation yields zero movement.
-                float deltaX = (trackedClip.x / trackedClip.w - cleanClip.x / cleanW) * halfWidth;
-                float deltaY = (trackedClip.y / trackedClip.w - cleanClip.y / cleanW) * halfHeight;
+                float deltaX = (trackedClip.x / trackedClip.w - cleanClip.x / cleanClip.w) * halfWidth;
+                float deltaY = (trackedClip.y / trackedClip.w - cleanClip.y / cleanClip.w) * halfHeight;
 
                 rectTransform.anchoredPosition = new Vector2(pos.x + deltaX, pos.y + deltaY);
             }

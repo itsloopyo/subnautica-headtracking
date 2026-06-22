@@ -266,6 +266,9 @@ namespace SubnauticaHeadTracking
             if (!initialized) return;
             if (!State.TrackingState.IsEnabled) return;
             if (!CheckGameplay()) return;
+            // Only compensate when the tracked view matrix is actually applied this frame,
+            // so PingCompensation reads a current, consistent OriginalViewMatrix.
+            if (!_viewMatrixOverridden) return;
 
             var cam = GetMainCamera();
             if (cam == null) return;
