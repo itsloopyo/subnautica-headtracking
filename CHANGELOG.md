@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.0] - 2026-08-03
+
+### Fixed
+
+- recenter only on first tracker connection, not every reconnection
+
 ## [1.2.0] - 2026-06-22
 
 ### Added
