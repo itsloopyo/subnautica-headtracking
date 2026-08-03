@@ -29,9 +29,12 @@ namespace SubnauticaHeadTracking
         // call ResetWorldToCameraMatrix to give control back to the transform.
         private static bool _viewMatrixOverridden;
 
-        // Auto-recenter: detect false→true transitions of IsReceiving and recenter
-        // after a few stabilization frames so the first tracking data doesn't cause a jump.
-        private static bool _wasReceiving;
+        // Auto-recenter once per session, on the first tracker connection, after a
+        // few stabilization frames so the first tracking data doesn't cause a jump.
+        // Reconnections after a tracking-loss gap must NOT recenter - the user may
+        // not be facing the screen; the tracker app owns re-acquisition recentering
+        // and signals it via the packet trailer.
+        private static bool _hasConnectRecentered;
         private static bool _wasTracking;
         private static int _stabilizationFramesRemaining;
         private const int StabilizationFrameCount = 5;
@@ -177,15 +180,25 @@ namespace SubnauticaHeadTracking
             // Track actual receiver connection state independently of gameplay
             // state so that pause/unpause doesn't trigger a false reconnection.
             bool receiverActive = staticReceiver != null && staticReceiver.IsReceiving;
+            bool gameplayShouldTrack = shouldTrack;
             if (!receiverActive)
                 shouldTrack = false;
 
-            // Auto-recenter only on genuine tracker (re)connection
-            if (receiverActive && !_wasReceiving)
+            // Auto-recenter only on the first tracker connection this session
+            if (receiverActive && !_hasConnectRecentered)
             {
+                _hasConnectRecentered = true;
                 _stabilizationFramesRemaining = StabilizationFrameCount;
                 ModLogger?.LogInfo("Tracker connected — stabilizing before auto-recenter");
             }
+            if (receiverActive && staticReceiver.TryConsumeRecenterRequest())
+            {
+                _stabilizationFramesRemaining = 0;
+                staticReceiver.GetRawRotation(out float yaw, out float pitch, out float roll);
+                Camera.CameraRotationApplicator.Recenter(yaw, pitch, roll);
+                ModLogger?.LogInfo("Recentered by tracker app");
+            }
+
             if (receiverActive && _stabilizationFramesRemaining > 0)
             {
                 _stabilizationFramesRemaining--;
@@ -196,16 +209,17 @@ namespace SubnauticaHeadTracking
                     ModLogger?.LogInfo($"Auto-recentered: Yaw={yaw:F2}, Pitch={pitch:F2}, Roll={roll:F2}");
                 }
             }
-            _wasReceiving = receiverActive;
 
-            // Recenter when tracking resumes (spawn, scene load, unpause)
-            if (shouldTrack && !_wasTracking && receiverActive)
+            // Recenter on gameplay-state transitions (spawn, scene load, unpause).
+            // Edge-detected on gameplay state alone so tracking data resuming
+            // after a loss gap does not retrigger it.
+            if (gameplayShouldTrack && !_wasTracking && receiverActive)
             {
                 staticReceiver.GetRawRotation(out float ry, out float rp, out float rr);
                 Camera.CameraRotationApplicator.Recenter(ry, rp, rr);
                 ModLogger?.LogInfo("Auto-recentered on gameplay start");
             }
-            _wasTracking = shouldTrack;
+            _wasTracking = gameplayShouldTrack;
 
             if (!shouldTrack)
             {
