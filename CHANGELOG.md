@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1] - 2026-08-18
+
+### Fixed
+
+- migrate to the per-connection smoothing pair in cameraunlock-core
+- match stub member kinds to the shipped Unity assemblies
+- compile the uGUI stubs into UnityEngine.UI, not UnityEngine
+
 ## [Unreleased]
 
 ### Changed
