@@ -93,48 +93,84 @@ Two equivalent binding sets - use whichever your keyboard has:
 
 The mod creates a config file at `BepInEx/config/com.cameraunlock.subnautica.headtracking.cfg` on first run. Edit settings there and restart the game to apply changes.
 
+A comment has to sit on its own line. BepInEx splits each line at the first `=`
+and takes everything after it as the value, so a trailing `# note` becomes part
+of the value, the conversion fails, and the entry silently keeps its default -
+the only trace is a line in `BepInEx/LogOutput.log`. Put explanations above the
+key, never after it.
+
 ```ini
 [Network]
-UdpPort = 4242              # UDP port for OpenTrack packets (restart required)
-BindAddress = 0.0.0.0       # Bind address (use 127.0.0.1 for local only)
+# UDP port for OpenTrack packets (restart required)
+UdpPort = 4242
+# Bind address (use 127.0.0.1 for local only)
+BindAddress = 0.0.0.0
 
 [Sensitivity]
-Yaw = 1.0                   # Left/right sensitivity (0.1-3.0)
-Pitch = 1.0                 # Up/down sensitivity (0.1-3.0)
-Roll = 1.0                  # Tilt sensitivity (0.1-3.0)
+# Left/right sensitivity (0.1-3.0)
+Yaw = 1.0
+# Up/down sensitivity (0.1-3.0)
+Pitch = 1.0
+# Tilt sensitivity (0.1-3.0)
+Roll = 1.0
 
 [Deadzone]
-Yaw = 0.0                   # Degrees of yaw ignored (0.0-10.0)
-Pitch = 0.0                 # Degrees of pitch ignored (0.0-10.0)
-Roll = 0.0                  # Degrees of roll ignored (0.0-10.0)
+# Degrees of yaw ignored (0.0-10.0)
+Yaw = 0.0
+# Degrees of pitch ignored (0.0-10.0)
+Pitch = 0.0
+# Degrees of roll ignored (0.0-10.0)
+Roll = 0.0
 
 [Inversion]
 YawInvert = false
-PitchInvert = true           # Inverted by default
+# Inverted by default
+PitchInvert = true
 RollInvert = false
 
 [Hotkeys]
-Toggle = End                 # Enable/disable tracking
-Recenter = Home              # Set current position as neutral
-CycleTrackingMode = PageUp   # Cycle tracking mode (full → rotation only → position only)
-ToggleYawMode = Insert       # Toggle yaw: camera-local <-> world-space
-CyclePort = PageDown         # Cycle UDP port 4242-4245
+# Enable/disable tracking
+Toggle = End
+# Set current position as neutral
+Recenter = Home
+# Cycle tracking mode (full -> rotation only -> position only)
+CycleTrackingMode = PageUp
+# Toggle yaw: camera-local <-> world-space
+ToggleYawMode = Insert
+# Cycle UDP port 4242-4245
+CyclePort = PageDown
 
 [Advanced]
-SmoothingFactor = 0.0        # Rotation smoothing (0 = instant, higher = smoother)
+# Smoothing when the tracker runs on this machine (0.0-1.0)
+LocalSmoothing = 0.0
+# Smoothing when the tracker is a remote network device (0.0-1.0)
+RemoteSmoothing = 0.15
 
 [Position]
-PositionEnabled = true       # Enable positional tracking
-PositionSensitivityX = 2.0   # Lateral sensitivity (0.0-3.0)
-PositionSensitivityY = 2.0   # Vertical sensitivity (0.0-3.0)
-PositionSensitivityZ = 2.0   # Depth sensitivity (0.0-3.0)
-PositionLimitX = 0.30        # Max lateral offset in meters (0.01-0.5)
-PositionLimitY = 0.15        # Max upward offset in meters (0.0-0.5)
-PositionLimitYDown = 0.01    # Max downward offset in meters (0.0-0.5)
-PositionLimitZ = 0.40        # Max forward offset in meters (0.01-0.5)
-PositionLimitZBack = 0.02    # Max backward offset in meters (0.01-0.5)
-PositionSmoothing = 0.15     # Position smoothing (0.0-1.0)
+# Enable positional tracking
+PositionEnabled = true
+# Lateral sensitivity (0.0-3.0)
+PositionSensitivityX = 2.0
+# Vertical sensitivity (0.0-3.0)
+PositionSensitivityY = 2.0
+# Depth sensitivity (0.0-3.0)
+PositionSensitivityZ = 2.0
+# Max lateral offset in meters (0.01-0.5)
+PositionLimitX = 0.30
+# Max upward offset in meters (0.0-0.5)
+PositionLimitY = 0.15
+# Max downward offset in meters (0.0-0.5)
+PositionLimitYDown = 0.01
+# Max forward offset in meters (0.01-0.5)
+PositionLimitZ = 0.40
+# Max backward offset in meters (0.01-0.5)
+PositionLimitZBack = 0.02
 ```
+
+Smoothing covers both rotation and position. Which of the two values applies is
+decided per connection from the packet source address: a tracker running on this
+PC uses `LocalSmoothing`, a phone or other network device uses `RemoteSmoothing`.
+Switching between them takes effect without restarting the game.
 
 ## Troubleshooting
 
@@ -150,9 +186,12 @@ PositionSmoothing = 0.15     # Position smoothing (0.0-1.0)
 - Press **End** to make sure tracking is enabled
 - Press **Home** to recenter if the view is offset
 
+**A config edit had no effect:**
+- Make sure nothing follows the value on the line. A trailing `# comment` is read as part of the value, the entry falls back to its default, and the game gives no sign of it. `BepInEx/LogOutput.log` records the failed conversion.
+
 **Camera jittering:**
 - Increase deadzone values in config
-- Increase SmoothingFactor for smoother movement
+- Increase RemoteSmoothing (phone/network tracker) or LocalSmoothing (tracker on this PC), with nothing after the value on the line
 - Improve lighting for webcam-based tracking
 
 **Wrong rotation direction:**

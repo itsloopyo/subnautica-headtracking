@@ -1,5 +1,29 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- replace `SmoothingFactor` and `PositionSmoothing` with `LocalSmoothing` (default 0.0) and `RemoteSmoothing` (default 0.15), selected per connection from the packet source address and covering both rotation and position
+- remove the hidden 0.15 baseline smoothing floor, so a tracker running on this PC now gets zero-latency tracking by default
+- **forward lean travel changed from 0.02 m to 0.40 m.** A redundant second clamp was
+  applied to the depth axis after the position processor had already clamped it, and it
+  used `PositionLimitZBack` (0.02) symmetrically in both directions. That overrode the
+  configured asymmetric limits entirely, so the effective depth window was
+  `[-0.02, +0.02]` no matter what `PositionLimitZ` was set to, and the deliberate
+  forward/backward swap sitting above it in the same file had no effect. The redundant
+  clamp is gone and the configured limits now apply as written: `[-PositionLimitZ,
+  +PositionLimitZBack]`, which at the defaults is `[-0.40, +0.02]`. Backward travel is
+  unchanged. Leaning forward now moves the camera up to 20x further than it did, which
+  is enough to push the view through cockpit dashboards, canopy glass, and nearby
+  geometry, since position tracking is render-only and does not collide. Lower
+  `PositionLimitZ` in the `[Position]` config section if the new range overshoots for
+  your setup.
+- the vertical, lateral and depth limits and the position sensitivities are now handed
+  to the position processor rather than partly re-clamped afterwards, so all of them
+  (not just `PositionLimitY` and `PositionLimitYDown`) take effect as soon as the
+  config file changes, without a restart
+
 ## [1.3.0] - 2026-08-03
 
 ### Fixed

@@ -30,7 +30,8 @@ namespace SubnauticaHeadTracking.Config
         public static ConfigEntry<KeyCode> ToggleYawModeHotkey { get; private set; }
         public static ConfigEntry<KeyCode> CyclePortHotkey { get; private set; }
 
-        public static ConfigEntry<float> SmoothingFactor { get; private set; }
+        public static ConfigEntry<float> LocalSmoothing { get; private set; }
+        public static ConfigEntry<float> RemoteSmoothing { get; private set; }
 
         // Position settings
         public static ConfigEntry<bool> PositionEnabled { get; private set; }
@@ -42,7 +43,6 @@ namespace SubnauticaHeadTracking.Config
         public static ConfigEntry<float> PositionLimitYDown { get; private set; }
         public static ConfigEntry<float> PositionLimitZ { get; private set; }
         public static ConfigEntry<float> PositionLimitZBack { get; private set; }
-        public static ConfigEntry<float> PositionSmoothing { get; private set; }
 
 
         /// <summary>
@@ -185,12 +185,25 @@ namespace SubnauticaHeadTracking.Config
                 "Cycle UDP listen port through 4242-4245. For couch co-op with multiple game instances on the same PC."
             );
 
-            SmoothingFactor = config.Bind(
+            // Smoothing covers both rotation and position. The value used is selected
+            // per connection from the packet source address, so a local tracker and a
+            // phone on WiFi each get their own setting without a restart.
+            LocalSmoothing = config.Bind(
                 "Advanced",
-                "SmoothingFactor",
-                PluginInfo.DEFAULT_SMOOTHING_FACTOR,
+                "LocalSmoothing",
+                PluginInfo.DEFAULT_LOCAL_SMOOTHING,
                 new ConfigDescription(
-                    "Camera rotation smoothing factor. Higher values = faster response. 0 = instant (no smoothing).",
+                    "Smoothing applied when the tracker runs on this machine (loopback). 0 = no smoothing, 1 = heavy.",
+                    new AcceptableValueRange<float>(0f, 1f)
+                )
+            );
+
+            RemoteSmoothing = config.Bind(
+                "Advanced",
+                "RemoteSmoothing",
+                PluginInfo.DEFAULT_REMOTE_SMOOTHING,
+                new ConfigDescription(
+                    "Smoothing applied when the tracker is a remote device on the network. 0 = no smoothing, 1 = heavy.",
                     new AcceptableValueRange<float>(0f, 1f)
                 )
             );
@@ -280,16 +293,6 @@ namespace SubnauticaHeadTracking.Config
                 new ConfigDescription(
                     "Maximum backward depth displacement in meters. Keep low to avoid seeing your own neck.",
                     new AcceptableValueRange<float>(0.01f, 0.5f)
-                )
-            );
-
-            PositionSmoothing = config.Bind(
-                "Position",
-                "PositionSmoothing",
-                0.15f,
-                new ConfigDescription(
-                    "Smoothing for positional tracking (0 = instant, 1 = very slow)",
-                    new AcceptableValueRange<float>(0f, 1f)
                 )
             );
 

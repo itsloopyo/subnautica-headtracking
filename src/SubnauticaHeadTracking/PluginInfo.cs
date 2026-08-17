@@ -13,8 +13,8 @@ namespace SubnauticaHeadTracking
         public const float DEFAULT_PITCH_SENSITIVITY = 1.0f;
         public const float DEFAULT_ROLL_SENSITIVITY = 1.0f;
 
-        public const float DEFAULT_SMOOTHING_FACTOR = 0.0f;  // 0 = no smoothing (instant response)
-        // Minimum smoothing baseline uses SmoothingUtils.BaselineSmoothing from CameraUnlock.Core
+        public const float DEFAULT_LOCAL_SMOOTHING = 0.0f;   // tracker on this machine: no smoothing (instant response)
+        public const float DEFAULT_REMOTE_SMOOTHING = 0.15f; // tracker on a network device: absorbs network jitter
 
         public const float DEFAULT_YAW_DEADZONE = 0.0f;
         public const float DEFAULT_PITCH_DEADZONE = 0.0f;

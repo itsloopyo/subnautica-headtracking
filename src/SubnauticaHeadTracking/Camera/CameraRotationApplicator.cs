@@ -39,10 +39,9 @@ namespace SubnauticaHeadTracking.Camera
         private static bool _settingsDirty = true;
         private static SensitivitySettings _cachedSensitivity;
         private static DeadzoneSettings _cachedDeadzone;
-        private static float _cachedSmoothingFactor;
-        private static float _cachedPositionLimitY;
-        private static float _cachedPositionLimitYDown;
-        private static float _cachedPositionLimitZBack;
+        private static float _cachedLocalSmoothing;
+        private static float _cachedRemoteSmoothing;
+        private static bool _cachedIsRemoteConnection;
 
         /// <summary>
         /// Current processed head tracking angles (degrees). Used for reticle compensation.
@@ -74,22 +73,31 @@ namespace SubnauticaHeadTracking.Camera
         {
             _positionProcessor = new PositionProcessor
             {
-                Settings = new PositionSettings(
-                    Config.ConfigurationManager.PositionSensitivityX.Value,
-                    Config.ConfigurationManager.PositionSensitivityY.Value,
-                    Config.ConfigurationManager.PositionSensitivityZ.Value,
-                    Config.ConfigurationManager.PositionLimitX.Value,
-                    Config.ConfigurationManager.PositionLimitY.Value,
-                    // Tracker reports negative Z for forward lean, so the generous forward
-                    // limit (PositionLimitZ) must be on the negative side of the clamp.
-                    // Clamp(z, -limitZBack, limitZ) → swap config values so forward gets 0.40m.
-                    Config.ConfigurationManager.PositionLimitZBack.Value,
-                    Config.ConfigurationManager.PositionLimitZ.Value,
-                    Config.ConfigurationManager.PositionSmoothing.Value,
-                    invertX: true, invertY: false, invertZ: false
-                )
+                Settings = BuildPositionSettings()
             };
             _positionInterpolator = new PositionInterpolator();
+        }
+
+        // Every slot is named. The constructor takes ten consecutive floats, so a
+        // positional call binds silently to whatever arity the signature happens to
+        // have: the smoothing split already turned one such call site into a
+        // limit-fed-as-smoothing bug fleet-wide. Naming makes any future shift of the
+        // parameter list a compile error here instead.
+        private static PositionSettings BuildPositionSettings()
+        {
+            return new PositionSettings(
+                sensitivityX: Config.ConfigurationManager.PositionSensitivityX.Value,
+                sensitivityY: Config.ConfigurationManager.PositionSensitivityY.Value,
+                sensitivityZ: Config.ConfigurationManager.PositionSensitivityZ.Value,
+                limitX: Config.ConfigurationManager.PositionLimitX.Value,
+                limitY: Config.ConfigurationManager.PositionLimitY.Value,
+                limitYDown: Config.ConfigurationManager.PositionLimitYDown.Value,
+                limitZ: Config.ConfigurationManager.PositionLimitZ.Value,
+                limitZBack: Config.ConfigurationManager.PositionLimitZBack.Value,
+                localSmoothing: Config.ConfigurationManager.LocalSmoothing.Value,
+                remoteSmoothing: Config.ConfigurationManager.RemoteSmoothing.Value,
+                invertX: true, invertY: false, invertZ: false
+            );
         }
 
         /// <summary>
@@ -116,15 +124,15 @@ namespace SubnauticaHeadTracking.Camera
             // Get raw pose with timestamp (needed for PoseInterpolator new-sample detection)
             TrackingPose rawPose = receiver.GetRawPose();
 
-            // Update processor settings from config (in case they changed)
-            UpdateProcessorSettings();
+            // Update processor settings from config (in case they changed) and pick up
+            // a connection locality change so the right smoothing parameter applies.
+            UpdateProcessorSettings(receiver);
 
             // Interpolate between tracking samples (30Hz → display rate via velocity extrapolation)
             TrackingPose interpolatedPose = poseInterpolator.Update(rawPose, dt);
 
-            // Always feed interpolated data — the interpolator fills frames with velocity-
-            // predicted values, and the processor's baseline smoothing absorbs the small
-            // residual error at sample boundaries.
+            // Always feed interpolated data - the interpolator fills frames with velocity-
+            // predicted values, which is what keeps motion smooth at LocalSmoothing = 0.
             TrackingPose processedPose = processor.Process(interpolatedPose, dt);
 
             // When the user has disabled rotation (PositionOnly mode), zero the angles
@@ -175,11 +183,9 @@ namespace SubnauticaHeadTracking.Camera
                 var headRotQ = new Quat4(headRotUnity.x, headRotUnity.y, headRotUnity.z, headRotUnity.w);
                 Vec3 posOffset = _positionProcessor.Process(interpolatedPos, headRotQ, dt);
 
+                // Already box-clamped by the processor against the configured asymmetric
+                // limits ([-LimitYDown, +LimitY], [-LimitZ, +LimitZBack]).
                 Vector3 offset = new Vector3(posOffset.X, posOffset.Y, posOffset.Z);
-
-                // Clamp: Z symmetric (ZBack both dirs), Y uses separate up/down limits.
-                offset.z = Mathf.Clamp(offset.z, -_cachedPositionLimitZBack, _cachedPositionLimitZBack);
-                offset.y = Mathf.Clamp(offset.y, -_cachedPositionLimitYDown, _cachedPositionLimitY);
 
                 CurrentPositionOffset = offset;
                 totalViewOffset = -offset;
@@ -205,7 +211,7 @@ namespace SubnauticaHeadTracking.Camera
             if (!_hasLoggedFirstApplication)
             {
                 Logger.LogInfo($"First view matrix rotation applied: Yaw={CurrentYaw:F2}°, Pitch={CurrentPitch:F2}°, Roll={CurrentRoll:F2}°");
-                Logger.LogInfo($"Baseline smoothing={SmoothingUtils.BaselineSmoothing}, extrapolation fraction={poseInterpolator.MaxExtrapolationFraction}");
+                Logger.LogInfo($"Smoothing: local={_cachedLocalSmoothing}, remote={_cachedRemoteSmoothing}, effective={SmoothingUtils.GetEffectiveSmoothing(_cachedLocalSmoothing, _cachedRemoteSmoothing, _cachedIsRemoteConnection)}, extrapolation fraction={poseInterpolator.MaxExtrapolationFraction}");
                 Logger.LogInfo("Head tracking uses camera-local rotation (no horizon lock — swimming-safe)");
                 _hasLoggedFirstApplication = true;
             }
@@ -222,10 +228,19 @@ namespace SubnauticaHeadTracking.Camera
 
         /// <summary>
         /// Updates processor settings from the configuration manager.
-        /// Only rebuilds settings when they are marked dirty (config changed).
+        /// Only rebuilds settings when they are marked dirty (config changed) or when
+        /// the connection switched between a local and a remote tracker.
         /// </summary>
-        private static void UpdateProcessorSettings()
+        /// <param name="receiver">Core OpenTrack receiver providing the connection locality</param>
+        private static void UpdateProcessorSettings(OpenTrackReceiver receiver)
         {
+            bool isRemoteConnection = receiver.IsRemoteConnection;
+            if (isRemoteConnection != _cachedIsRemoteConnection)
+            {
+                _cachedIsRemoteConnection = isRemoteConnection;
+                _settingsDirty = true;
+            }
+
             if (!_settingsDirty) return;
 
             _settingsDirty = false;
@@ -249,15 +264,22 @@ namespace SubnauticaHeadTracking.Camera
             );
             processor.Deadzone = _cachedDeadzone;
 
-            // The library's GetEffectiveSmoothing applies BaselineSmoothing as a floor
-            // unconditionally, so just pass the user's value through.
-            _cachedSmoothingFactor = Config.ConfigurationManager.SmoothingFactor.Value;
-            processor.SmoothingFactor = _cachedSmoothingFactor;
+            // Both smoothing values go to the processors as-is; the library selects
+            // between them from the connection flag. No floor is applied.
+            _cachedLocalSmoothing = Config.ConfigurationManager.LocalSmoothing.Value;
+            _cachedRemoteSmoothing = Config.ConfigurationManager.RemoteSmoothing.Value;
+            processor.LocalSmoothing = _cachedLocalSmoothing;
+            processor.RemoteSmoothing = _cachedRemoteSmoothing;
+            processor.IsRemoteConnection = _cachedIsRemoteConnection;
 
-            // Cache position limits to avoid per-frame ConfigEntry.Value reads
-            _cachedPositionLimitY = Config.ConfigurationManager.PositionLimitY.Value;
-            _cachedPositionLimitYDown = Config.ConfigurationManager.PositionLimitYDown.Value;
-            _cachedPositionLimitZBack = Config.ConfigurationManager.PositionLimitZBack.Value;
+            // Position carries the smoothing pair and the limits inside PositionSettings,
+            // so the whole struct is rebuilt here; only the connection flag is runtime
+            // state on the processor.
+            if (_positionProcessor != null)
+            {
+                _positionProcessor.Settings = BuildPositionSettings();
+                _positionProcessor.IsRemoteConnection = _cachedIsRemoteConnection;
+            }
 
             Logger.LogInfo("Processor settings updated from configuration");
         }
