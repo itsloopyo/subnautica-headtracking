@@ -36,3 +36,5 @@ mcp.json
 # OS
 .DS_Store
 Thumbs.db
+scratch/
+NEXUS_MODS.md
