@@ -2,9 +2,13 @@
 bin/
 obj/
 
-# Game reference DLLs (copied at build time)
+# Game reference DLLs (copied at build time). The *Stubs.cs sources are the
+# checked-in inputs to the game-free build and must stay tracked.
 libs/
 lib/
+!src/SubnauticaHeadTracking/libs/
+src/SubnauticaHeadTracking/libs/*
+!src/SubnauticaHeadTracking/libs/*Stubs.cs
 
 # NuGet
 packages/
