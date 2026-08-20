@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.0] - 2026-08-20
+
+### Added
+
+- drop mod-side centring, log first tracker packet
+
 ## [1.3.1] - 2026-08-18
 
 ### Fixed
