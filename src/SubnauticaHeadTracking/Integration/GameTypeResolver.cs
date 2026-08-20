@@ -45,7 +45,7 @@ namespace SubnauticaHeadTracking.Integration
 
         /// <summary>
         /// Attempts to resolve all game types from Assembly-CSharp.
-        /// Safe to call every frame — exits immediately once resolved.
+        /// Safe to call every frame - exits immediately once resolved.
         /// Does not mark as searched until Player type is found (the fundamental type).
         /// </summary>
         public static void EnsureSearched()

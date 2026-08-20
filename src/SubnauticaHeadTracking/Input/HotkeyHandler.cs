@@ -1,6 +1,5 @@
 using UnityEngine;
 using BepInEx.Logging;
-using CameraUnlock.Core.Protocol;
 
 namespace SubnauticaHeadTracking.Input
 {
@@ -17,7 +16,6 @@ namespace SubnauticaHeadTracking.Input
         private static bool _hasLoggedFirstCheck = false;
 
         private static KeyCode _cachedToggleHotkey;
-        private static KeyCode _cachedRecenterHotkey;
         private static KeyCode _cachedCycleTrackingModeHotkey;
         private static KeyCode _cachedToggleYawModeHotkey;
         private static KeyCode _cachedCyclePortHotkey;
@@ -47,7 +45,6 @@ namespace SubnauticaHeadTracking.Input
             if (!_cacheInitialized)
             {
                 _cachedToggleHotkey = Config.ConfigurationManager.ToggleHotkey.Value;
-                _cachedRecenterHotkey = Config.ConfigurationManager.RecenterHotkey.Value;
                 _cachedCycleTrackingModeHotkey = Config.ConfigurationManager.CycleTrackingModeHotkey.Value;
                 _cachedToggleYawModeHotkey = Config.ConfigurationManager.ToggleYawModeHotkey.Value;
                 _cachedCyclePortHotkey = Config.ConfigurationManager.CyclePortHotkey.Value;
@@ -55,13 +52,6 @@ namespace SubnauticaHeadTracking.Input
             }
 
             bool chordModifiers = IsCtrlShiftHeld();
-
-            // Recenter: Home or Ctrl+Shift+T
-            if (UnityEngine.Input.GetKeyDown(_cachedRecenterHotkey)
-                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.T)))
-            {
-                HandleRecenterHotkey();
-            }
 
             // Toggle tracking: End or Ctrl+Shift+Y
             if (UnityEngine.Input.GetKeyDown(_cachedToggleHotkey)
@@ -123,36 +113,6 @@ namespace SubnauticaHeadTracking.Input
         private static void HandleCycleTrackingModeHotkey()
         {
             State.TrackingState.CycleMode();
-        }
-
-        /// <summary>
-        /// Handles the recenter hotkey press.
-        /// Captures current head position as neutral position.
-        /// </summary>
-        private static void HandleRecenterHotkey()
-        {
-            if (!State.TrackingState.IsEnabled)
-            {
-                Logger.LogWarning("Recenter hotkey pressed but tracking is disabled - enable tracking first");
-                return;
-            }
-
-            OpenTrackReceiver receiver = HeadTrackingPlugin.Receiver;
-            if (receiver == null)
-            {
-                Logger.LogWarning("Recenter hotkey pressed but no receiver available");
-                return;
-            }
-
-            if (!receiver.IsReceiving)
-            {
-                Logger.LogWarning("Recenter hotkey pressed but tracking data is stale (no recent OpenTrack packets)");
-                return;
-            }
-
-            receiver.GetRawRotation(out float yaw, out float pitch, out float roll);
-            Camera.CameraRotationApplicator.Recenter(yaw, pitch, roll);
-            Logger.LogInfo("Recenter hotkey pressed: Head tracking recentered to current position");
         }
     }
 }

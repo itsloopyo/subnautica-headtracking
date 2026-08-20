@@ -9,7 +9,7 @@ namespace SubnauticaHeadTracking.UI
     /// <summary>
     /// Sets the player's head mesh to shadow-only rendering while head tracking
     /// is active. The head is right at the camera and clips into view constantly.
-    /// The body stays fully visible — arms, torso, legs, flippers all render normally.
+    /// The body stays fully visible - arms, torso, legs, flippers all render normally.
     /// Saves and restores each renderer's original ShadowCastingMode so toggling
     /// tracking off returns to the exact stock game state.
     /// </summary>

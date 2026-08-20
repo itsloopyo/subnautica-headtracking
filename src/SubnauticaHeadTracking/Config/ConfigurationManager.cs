@@ -25,7 +25,6 @@ namespace SubnauticaHeadTracking.Config
         public static ConfigEntry<bool> RollInvert { get; private set; }
 
         public static ConfigEntry<KeyCode> ToggleHotkey { get; private set; }
-        public static ConfigEntry<KeyCode> RecenterHotkey { get; private set; }
         public static ConfigEntry<KeyCode> CycleTrackingModeHotkey { get; private set; }
         public static ConfigEntry<KeyCode> ToggleYawModeHotkey { get; private set; }
         public static ConfigEntry<KeyCode> CyclePortHotkey { get; private set; }
@@ -155,13 +154,6 @@ namespace SubnauticaHeadTracking.Config
                 "Toggle",
                 KeyCode.End,
                 "Hotkey to enable/disable head tracking."
-            );
-
-            RecenterHotkey = config.Bind(
-                "Hotkeys",
-                "Recenter",
-                KeyCode.Home,
-                "Hotkey to recenter head tracking. Treats current head position as neutral."
             );
 
             CycleTrackingModeHotkey = config.Bind(

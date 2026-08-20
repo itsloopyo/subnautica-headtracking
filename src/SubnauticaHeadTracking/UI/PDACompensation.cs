@@ -41,12 +41,12 @@ namespace SubnauticaHeadTracking.UI
                 {
                     _searchFailed = true;
                     HeadTrackingPlugin.ModLogger?.LogWarning(
-                        "PDA.isInUse not found — PDA detection disabled");
+                        "PDA.isInUse not found - PDA detection disabled");
                     return;
                 }
 
                 var instance = UnityEngine.Object.FindObjectOfType(GameTypeResolver.PDAType) as Component;
-                if (instance == null) return; // Not spawned yet — retry next frame
+                if (instance == null) return; // Not spawned yet - retry next frame
 
                 _pdaInstance = instance;
                 string memberName = GameTypeResolver.PDAIsInUseField != null
@@ -77,11 +77,11 @@ namespace SubnauticaHeadTracking.UI
 
             if (IsPDAOpen && !wasOpen)
             {
-                HeadTrackingPlugin.ModLogger?.LogInfo("PDA opened — head tracking suppressed");
+                HeadTrackingPlugin.ModLogger?.LogInfo("PDA opened - head tracking suppressed");
             }
             else if (!IsPDAOpen && wasOpen)
             {
-                HeadTrackingPlugin.ModLogger?.LogInfo("PDA closed — head tracking restored");
+                HeadTrackingPlugin.ModLogger?.LogInfo("PDA closed - head tracking restored");
             }
         }
     }

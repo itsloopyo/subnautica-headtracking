@@ -118,7 +118,7 @@ namespace SubnauticaHeadTracking.Camera
                 throw new System.ArgumentNullException(nameof(receiver), "Receiver cannot be null");
             }
 
-            // Cache Time.deltaTime — single native interop read instead of five
+            // Cache Time.deltaTime - single native interop read instead of five
             float dt = Time.deltaTime;
 
             // Get raw pose with timestamp (needed for PoseInterpolator new-sample detection)
@@ -164,7 +164,7 @@ namespace SubnauticaHeadTracking.Camera
             Quaternion rollQ = Quaternion.AngleAxis(-CurrentRoll, Vector3.forward);
             Quaternion headRotUnity = rollQ * pitchQ * yawQ;
 
-            // Compute head rotation matrix directly — avoids ViewMatrixModifier which
+            // Compute head rotation matrix directly - avoids ViewMatrixModifier which
             // would redundantly ResetWorldToCameraMatrix and re-read the matrix we
             // already captured above.
             Matrix4x4 headRotMatrix = Matrix4x4.Rotate(headRotUnity);
@@ -212,7 +212,7 @@ namespace SubnauticaHeadTracking.Camera
             {
                 Logger.LogInfo($"First view matrix rotation applied: Yaw={CurrentYaw:F2}°, Pitch={CurrentPitch:F2}°, Roll={CurrentRoll:F2}°");
                 Logger.LogInfo($"Smoothing: local={_cachedLocalSmoothing}, remote={_cachedRemoteSmoothing}, effective={SmoothingUtils.GetEffectiveSmoothing(_cachedLocalSmoothing, _cachedRemoteSmoothing, _cachedIsRemoteConnection)}, extrapolation fraction={poseInterpolator.MaxExtrapolationFraction}");
-                Logger.LogInfo("Head tracking uses camera-local rotation (no horizon lock — swimming-safe)");
+                Logger.LogInfo("Head tracking uses camera-local rotation (no horizon lock - swimming-safe)");
                 _hasLoggedFirstApplication = true;
             }
         }
@@ -284,44 +284,5 @@ namespace SubnauticaHeadTracking.Camera
             Logger.LogInfo("Processor settings updated from configuration");
         }
 
-        /// <summary>
-        /// Recenters tracking by capturing current head position as neutral.
-        /// </summary>
-        /// <param name="yaw">Current raw yaw from receiver</param>
-        /// <param name="pitch">Current raw pitch from receiver</param>
-        /// <param name="roll">Current raw roll from receiver</param>
-        public static void Recenter(float yaw, float pitch, float roll)
-        {
-            var currentPose = new TrackingPose(yaw, pitch, roll);
-            processor.RecenterTo(currentPose);
-            poseInterpolator.Reset();
-            var receiver = HeadTrackingPlugin.Receiver;
-            if (receiver != null)
-            {
-                _positionProcessor?.SetCenter(receiver.GetLatestPosition());
-            }
-            _positionInterpolator?.Reset();
-            Logger.LogInfo($"Head tracking recentered to: Yaw={yaw:F2}°, Pitch={pitch:F2}°, Roll={roll:F2}°");
-        }
-
-        /// <summary>
-        /// Resets all tracking state. Called when exiting gameplay to ensure
-        /// the main menu camera is not affected by stale head tracking data.
-        /// </summary>
-        public static void ResetState()
-        {
-            processor.Reset();
-            poseInterpolator.Reset();
-            CurrentYaw = 0f;
-            CurrentPitch = 0f;
-            CurrentRoll = 0f;
-            CurrentPositionOffset = Vector3.zero;
-            OriginalViewMatrix = Matrix4x4.identity;
-            _hasLoggedFirstApplication = false;
-            _settingsDirty = true;
-            _smoothedSwimBlend = 0f;
-            _positionProcessor?.Reset();
-            _positionInterpolator?.Reset();
-        }
     }
 }

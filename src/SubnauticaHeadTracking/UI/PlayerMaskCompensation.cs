@@ -32,7 +32,7 @@ namespace SubnauticaHeadTracking.UI
             if (_maskTransform != null && _maskTransform)
                 return;
 
-            // Stale reference — clear and re-search
+            // Stale reference - clear and re-search
             _maskTransform = null;
             _modified = false;
             _firstCompensationLogged = false;
@@ -47,7 +47,7 @@ namespace SubnauticaHeadTracking.UI
                     if (GameTypeResolver.PlayerType != null)
                     {
                         HeadTrackingPlugin.ModLogger?.LogWarning(
-                            "PlayerMask type not found — mask compensation disabled");
+                            "PlayerMask type not found - mask compensation disabled");
                         _searchFailed = true;
                     }
                     return;
@@ -118,7 +118,7 @@ namespace SubnauticaHeadTracking.UI
                 _firstCompensationLogged = true;
                 var delta = _maskTransform.position - _savedPosition;
                 HeadTrackingPlugin.ModLogger?.LogInfo(
-                    $"Mask compensation applied on {_maskTransform.gameObject.name} — " +
+                    $"Mask compensation applied on {_maskTransform.gameObject.name} - " +
                     $"pos delta=({delta.x:F4}, {delta.y:F4}, {delta.z:F4}), " +
                     $"rot delta={Quaternion.Angle(_savedRotation, _maskTransform.rotation):F2}°");
             }

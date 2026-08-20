@@ -136,7 +136,7 @@ namespace SubnauticaHeadTracking.UI
             if (scaleFactor > 0f && scaleFactor != 1f)
                 offset /= scaleFactor;
 
-            // Move the entire HandReticle root — all children (icon, text, prompts) follow
+            // Move the entire HandReticle root - all children (icon, text, prompts) follow
             _handReticleRect.anchoredPosition = offset;
         }
     }

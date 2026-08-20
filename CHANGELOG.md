@@ -10,8 +10,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- one latched `First tracker packet received on port N` line in
+  `BepInEx/LogOutput.log`. Until now the log could not distinguish "the tracker
+  never reached the mod" from "tracking was gated by the gameplay state", which
+  cost a round trip on every "no head tracking" report.
+
 ### Changed
 
+- The mod no longer keeps a centre of its own and applies the tracker pose as
+  absolute. Every tracker app centres itself, so a mod-side centre sat in series
+  with the tracker's and the two drifted apart. Centre in your tracker app
+  instead. The recentre hotkey, its `[Hotkeys] Recenter` config entry, and the
+  tracker-app recentre request handling are gone with it.
 - replace `SmoothingFactor` and `PositionSmoothing` with `LocalSmoothing` (default 0.0) and `RemoteSmoothing` (default 0.15), selected per connection from the packet source address and covering both rotation and position
 - remove the hidden 0.15 baseline smoothing floor, so a tracker running on this PC now gets zero-latency tracking by default
 - **forward lean travel changed from 0.02 m to 0.40 m.** A redundant second clamp was

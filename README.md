@@ -72,11 +72,14 @@ Two equivalent binding sets - use whichever your keyboard has:
 
 | Action              | Nav-cluster | Chord           |
 |---------------------|-------------|-----------------|
-| Recenter            | `Home`      | `Ctrl+Shift+T`  |
 | Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
 | Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
 | Toggle yaw mode     | `Insert`    | `Ctrl+Shift+U`  |
 | Cycle UDP port      | `Page Down` | `Ctrl+Shift+H`  |
+
+The mod applies the pose your tracker sends and keeps no centre of its own. To
+recentre, use the centre control in your tracker app: Center in opentrack,
+CENTER in Headcam, or the equivalent in whatever you run.
 
 `Page Up` / `Ctrl+Shift+G` cycles tracking mode:
 
@@ -131,8 +134,6 @@ RollInvert = false
 [Hotkeys]
 # Enable/disable tracking
 Toggle = End
-# Set current position as neutral
-Recenter = Home
 # Cycle tracking mode (full -> rotation only -> position only)
 CycleTrackingMode = PageUp
 # Toggle yaw: camera-local <-> world-space
@@ -184,7 +185,7 @@ Switching between them takes effect without restarting the game.
 - Ensure your tracker is running and outputting data
 - Verify the UDP port matches in both tracker and config
 - Press **End** to make sure tracking is enabled
-- Press **Home** to recenter if the view is offset
+- If the view sits off to one side, press centre in your tracker app
 
 **A config edit had no effect:**
 - Make sure nothing follows the value on the line. A trailing `# comment` is read as part of the value, the entry falls back to its default, and the game gives no sign of it. `BepInEx/LogOutput.log` records the failed conversion.
@@ -264,4 +265,4 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 ## Disclaimer
 
-This mod is not affiliated with, endorsed by, or supported by Unknown Worlds Entertainment. "Subnautica" is a trademark of Unknown Worlds Entertainment, Inc. Use this mod at your own risk — no warranty is provided.
+This mod is not affiliated with, endorsed by, or supported by Unknown Worlds Entertainment. "Subnautica" is a trademark of Unknown Worlds Entertainment, Inc. Use this mod at your own risk - no warranty is provided.

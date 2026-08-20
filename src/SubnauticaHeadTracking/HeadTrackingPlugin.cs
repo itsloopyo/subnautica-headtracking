@@ -12,11 +12,6 @@ namespace SubnauticaHeadTracking
     {
         internal static ManualLogSource ModLogger { get; private set; }
 
-        /// <summary>
-        /// Gets the core receiver instance for checking connection state.
-        /// </summary>
-        public static OpenTrackReceiver Receiver { get; private set; }
-
         // Static references to keep everything alive regardless of GameObject destruction
         private static bool initialized;
         private static OpenTrackReceiver staticReceiver;
@@ -29,17 +24,12 @@ namespace SubnauticaHeadTracking
         // call ResetWorldToCameraMatrix to give control back to the transform.
         private static bool _viewMatrixOverridden;
 
-        // Auto-recenter once per session, on the first tracker connection, after a
-        // few stabilization frames so the first tracking data doesn't cause a jump.
-        // Reconnections after a tracking-loss gap must NOT recenter - the user may
-        // not be facing the screen; the tracker app owns re-acquisition recentering
-        // and signals it via the packet trailer.
-        private static bool _hasConnectRecentered;
-        private static bool _wasTracking;
-        private static int _stabilizationFramesRemaining;
-        private const int StabilizationFrameCount = 5;
+        // Latched: the log must be able to answer "did any tracker packet ever reach
+        // the mod", separately from whether tracking was applied. Without it a wrong
+        // port, a firewall block and a gameplay gate all look identical in the log.
+        private static bool _hasLoggedFirstPacket;
 
-        // Per-frame caches — Camera.main does FindGameObjectWithTag internally,
+        // Per-frame caches - Camera.main does FindGameObjectWithTag internally,
         // and IsInActiveGameplay does 3+ reflection calls. Both are called from
         // multiple callbacks per frame but their results can't change within a frame.
         private static int _mainCameraFrame = -1;
@@ -122,7 +112,6 @@ namespace SubnauticaHeadTracking
             staticReceiver.Log = msg => Logger.LogInfo(msg);
             CurrentPort = ConfigurationManager.UdpPort.Value;
             staticReceiver.Start(CurrentPort);
-            Receiver = staticReceiver;
             Logger.LogInfo($"UDP receiver started on port {CurrentPort}");
         }
 
@@ -180,46 +169,14 @@ namespace SubnauticaHeadTracking
             // Track actual receiver connection state independently of gameplay
             // state so that pause/unpause doesn't trigger a false reconnection.
             bool receiverActive = staticReceiver != null && staticReceiver.IsReceiving;
-            bool gameplayShouldTrack = shouldTrack;
             if (!receiverActive)
                 shouldTrack = false;
 
-            // Auto-recenter only on the first tracker connection this session
-            if (receiverActive && !_hasConnectRecentered)
+            if (receiverActive && !_hasLoggedFirstPacket)
             {
-                _hasConnectRecentered = true;
-                _stabilizationFramesRemaining = StabilizationFrameCount;
-                ModLogger?.LogInfo("Tracker connected — stabilizing before auto-recenter");
+                _hasLoggedFirstPacket = true;
+                ModLogger?.LogInfo($"First tracker packet received on port {CurrentPort} (remote sender: {staticReceiver.IsRemoteConnection})");
             }
-            if (receiverActive && staticReceiver.TryConsumeRecenterRequest())
-            {
-                _stabilizationFramesRemaining = 0;
-                staticReceiver.GetRawRotation(out float yaw, out float pitch, out float roll);
-                Camera.CameraRotationApplicator.Recenter(yaw, pitch, roll);
-                ModLogger?.LogInfo("Recentered by tracker app");
-            }
-
-            if (receiverActive && _stabilizationFramesRemaining > 0)
-            {
-                _stabilizationFramesRemaining--;
-                if (_stabilizationFramesRemaining == 0)
-                {
-                    staticReceiver.GetRawRotation(out float yaw, out float pitch, out float roll);
-                    Camera.CameraRotationApplicator.Recenter(yaw, pitch, roll);
-                    ModLogger?.LogInfo($"Auto-recentered: Yaw={yaw:F2}, Pitch={pitch:F2}, Roll={roll:F2}");
-                }
-            }
-
-            // Recenter on gameplay-state transitions (spawn, scene load, unpause).
-            // Edge-detected on gameplay state alone so tracking data resuming
-            // after a loss gap does not retrigger it.
-            if (gameplayShouldTrack && !_wasTracking && receiverActive)
-            {
-                staticReceiver.GetRawRotation(out float ry, out float rp, out float rr);
-                Camera.CameraRotationApplicator.Recenter(ry, rp, rr);
-                ModLogger?.LogInfo("Auto-recentered on gameplay start");
-            }
-            _wasTracking = gameplayShouldTrack;
 
             if (!shouldTrack)
             {
@@ -235,7 +192,7 @@ namespace SubnauticaHeadTracking
             }
 
             // Always process tracking data to keep processor/interpolator warm.
-            // This ensures seamless resume when PDA closes — no stale data, no jump.
+            // This ensures seamless resume when PDA closes - no stale data, no jump.
             Camera.CameraRotationApplicator.ApplyViewMatrixRotation(cam, staticReceiver);
 
             if (UI.PDACompensation.IsPDAOpen)
@@ -301,7 +258,6 @@ namespace SubnauticaHeadTracking
         {
             Logger.LogInfo($"{PluginInfo.PLUGIN_NAME} v{PluginInfo.PLUGIN_VERSION} loaded successfully");
             Logger.LogInfo($"Press {ConfigurationManager.ToggleHotkey.Value} to toggle tracking");
-            Logger.LogInfo($"Press {ConfigurationManager.RecenterHotkey.Value} to recenter tracking");
             Logger.LogInfo($"Tracking is {(State.TrackingState.IsEnabled ? "ENABLED" : "DISABLED")} by default");
         }
 
@@ -361,7 +317,6 @@ namespace SubnauticaHeadTracking
             staticReceiver.Dispose();
             ModLogger?.LogInfo("UDP receiver stopped");
             staticReceiver = null;
-            Receiver = null;
         }
 
         private void OnConfigSettingChanged(object sender, EventArgs e)
