@@ -23,6 +23,46 @@ $releaseDir = Join-Path $projectDir "release"
 
 $modDlls = @("SubnauticaHeadTracking.dll", "CameraUnlock.Core.dll", "CameraUnlock.Core.Unity.dll")
 
+# cameraunlock-core is MIT under a different copyright holder than this mod's
+# own LICENSE, so its notice has to travel with the binary it is compiled into
+# rather than being treated as covered by ours.
+$coreLicenseEntry = "licenses/cameraunlock-core-LICENSE.txt"
+$coreLicenseSource = Join-Path $projectDir "cameraunlock-core\LICENSE"
+$requiredZipEntries = @("LICENSE", "THIRD-PARTY-NOTICES.md", $coreLicenseEntry)
+
+# Every published ZIP is a binary distribution, so a missing licence is a
+# compliance failure and must stop the build rather than produce a green one.
+function Copy-RequiredFile {
+    param([string]$Source, [string]$Destination, [string]$Label)
+
+    if (-not (Test-Path $Source)) {
+        throw "Required notice file not found: $Source. Every published ZIP is a binary distribution and must carry it."
+    }
+    Copy-Item $Source -Destination $Destination -Force
+    Write-Host "  $Label" -ForegroundColor Green
+}
+
+# Verify against the built archive rather than trusting the staging steps.
+# Inlined instead of using the shared helper: cameraunlock-core at the pinned
+# commit does not export one, so a call would fail in CI.
+function Assert-ZipCarriesNotices {
+    param([string]$ZipPath, [string[]]$EntryNames)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $entries = $zip.Entries | ForEach-Object { $_.FullName -replace '\\', '/' }
+    } finally {
+        $zip.Dispose()
+    }
+
+    $missing = $EntryNames | Where-Object { $entries -notcontains $_ }
+    if ($missing) {
+        throw "$(Split-Path -Leaf $ZipPath) is missing required licence entries: $($missing -join ', ')"
+    }
+    Write-Host "  notices verified in archive: $($EntryNames -join ', ')" -ForegroundColor Green
+}
+
 Write-Host "=== Subnautica Head Tracking - Package Release ===" -ForegroundColor Magenta
 Write-Host ""
 Write-Host "Version: $version" -ForegroundColor Cyan
@@ -100,30 +140,29 @@ foreach ($dll in $modDlls) {
 # Bundle vendored BepInEx (LGPL-2.1) - the install-time source of truth.
 $ghVendorDir = Join-Path $ghStagingDir "vendor\bepinex"
 New-Item -ItemType Directory -Path $ghVendorDir -Force | Out-Null
+# The LGPL binary is redistributed here, so its licence file is not optional.
 foreach ($vendorFile in @("BepInEx_win_x64.zip", "LICENSE", "README.md")) {
     $src = Join-Path $vendorBepDir $vendorFile
-    if (Test-Path $src) {
-        Copy-Item $src -Destination $ghVendorDir -Force
-        Write-Host "  vendor/bepinex/$vendorFile" -ForegroundColor Green
-    } elseif ($vendorFile -eq "BepInEx_win_x64.zip") {
+    if (-not (Test-Path $src)) {
         throw "Required vendor file missing: $src"
     }
+    Copy-Item $src -Destination $ghVendorDir -Force
+    Write-Host "  vendor/bepinex/$vendorFile" -ForegroundColor Green
 }
 
 # Bundle the shared detection bundle for install.cmd's shim.
 Copy-SharedBundle -StagingDir $ghStagingDir -CoreRoot (Join-Path $projectDir 'cameraunlock-core')
 
 # Copy documentation
-$docFiles = @("README.md", "LICENSE", "CHANGELOG.md", "THIRD-PARTY-NOTICES.md")
-foreach ($doc in $docFiles) {
-    $docPath = Join-Path $projectDir $doc
-    if (Test-Path $docPath) {
-        Copy-Item $docPath -Destination $ghStagingDir -Force
-        Write-Host "  $doc" -ForegroundColor Green
-    } elseif ($doc -eq "LICENSE") {
-        Write-Host "  WARNING: $doc not found" -ForegroundColor Yellow
-    }
+foreach ($doc in @("README.md", "LICENSE", "CHANGELOG.md", "THIRD-PARTY-NOTICES.md")) {
+    Copy-RequiredFile -Source (Join-Path $projectDir $doc) -Destination $ghStagingDir -Label $doc
 }
+
+$ghLicensesDir = Join-Path $ghStagingDir "licenses"
+New-Item -ItemType Directory -Path $ghLicensesDir -Force | Out-Null
+Copy-RequiredFile -Source $coreLicenseSource `
+    -Destination (Join-Path $ghLicensesDir "cameraunlock-core-LICENSE.txt") `
+    -Label $coreLicenseEntry
 
 $ghZipName = "SubnauticaHeadTracking-v$version-installer.zip"
 $ghZipPath = Join-Path $releaseDir $ghZipName
@@ -139,6 +178,8 @@ try {
     Pop-Location
 }
 Remove-Item -Recurse -Force $ghStagingDir
+
+Assert-ZipCarriesNotices -ZipPath $ghZipPath -EntryNames ($requiredZipEntries + "vendor/bepinex/LICENSE")
 
 $ghZipSize = (Get-Item $ghZipPath).Length / 1KB
 Write-Host ("  $ghZipPath ({0:N1} KB)" -f $ghZipSize) -ForegroundColor Green
@@ -170,6 +211,19 @@ if (Test-Path $nexusZipPath) { Remove-Item $nexusZipPath -Force }
 Write-Host ""
 Write-Host "Creating Nexus ZIP..." -ForegroundColor Cyan
 
+# The Nexus ZIP is a binary distribution too: the licences of everything
+# compiled into the payload require their notices to travel with it, so
+# LICENSE, THIRD-PARTY-NOTICES.md and the core licence ship at its root.
+foreach ($noticeDoc in @("LICENSE", "THIRD-PARTY-NOTICES.md", "README.md")) {
+    Copy-RequiredFile -Source (Join-Path $projectDir $noticeDoc) -Destination $nexusStagingDir -Label $noticeDoc
+}
+
+$nexusLicensesDir = Join-Path $nexusStagingDir "licenses"
+New-Item -ItemType Directory -Path $nexusLicensesDir -Force | Out-Null
+Copy-RequiredFile -Source $coreLicenseSource `
+    -Destination (Join-Path $nexusLicensesDir "cameraunlock-core-LICENSE.txt") `
+    -Label $coreLicenseEntry
+
 Push-Location $nexusStagingDir
 try {
     Compress-Archive -Path ".\*" -DestinationPath $nexusZipPath -Force
@@ -177,6 +231,8 @@ try {
     Pop-Location
 }
 Remove-Item -Recurse -Force $nexusStagingDir
+
+Assert-ZipCarriesNotices -ZipPath $nexusZipPath -EntryNames $requiredZipEntries
 
 $nexusZipSize = (Get-Item $nexusZipPath).Length / 1KB
 Write-Host ("  $nexusZipPath ({0:N1} KB)" -f $nexusZipSize) -ForegroundColor Green

@@ -254,7 +254,13 @@ pixi run package
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+The mod's own code is MIT licensed. See [LICENSE](LICENSE) for details.
+
+The MIT licence does not extend to everything in this repository. BepInEx and
+the libraries bundled inside it keep their own licences, and the demo clip at
+the top of this page is Subnautica footage belonging to its rights holders.
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists each component, what it
+is licensed under, and how it ships.
 
 ## Credits
 
