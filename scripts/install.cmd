@@ -18,6 +18,14 @@ set "BEPINEX_SUBFOLDER="
 set "MOD_CONTROLS=Controls:&echo   End       - Toggle head tracking on/off&echo   Page Up   - Cycle tracking mode&echo   Insert    - Toggle yaw mode (world/local)&echo   Page Down - Cycle UDP port (4242-4245)"
 :: --- END CONFIG BLOCK ---
 
+:: Pin delayed expansion off before `%*` is expanded on the `call` below.
+:: Under `cmd /V:ON`, or with DelayedExpansion=1 in
+:: HKCU\Software\Microsoft\Command Processor, cmd.exe eats a `!` out of the
+:: expanded line, and a real game path like C:\Games\Oh! My Game reaches the
+:: body already mangled. The body pins expansion off at its own outer scope
+:: too, but that is one `call` too late to save the argument it was handed.
+setlocal disabledelayedexpansion
+
 set "WRAPPER_DIR=%~dp0"
 set "_BODY=%WRAPPER_DIR%shared\install-body-bepinex.cmd"
 if not exist "%_BODY%" set "_BODY=%WRAPPER_DIR%..\cameraunlock-core\scripts\install-body-bepinex.cmd"
