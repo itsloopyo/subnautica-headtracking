@@ -1,8 +1,8 @@
 # Subnautica Head Tracking
 
-![Mod GIF](https://raw.githubusercontent.com/itsloopyo/subnautica-headtracking/main/assets/readme-clip.gif)
+![Subnautica running with this mod](https://raw.githubusercontent.com/itsloopyo/subnautica-headtracking/main/assets/readme-clip.gif)
 
-An **unofficial** BepInEx mod that adds head tracking support to Subnautica using OpenTrack-compatible trackers.
+An unofficial head tracking mod for Subnautica that moves the view with your head while your mouse or controller keeps aiming, driven by a webcam, phone, or any OpenTrack compatible tracker, with no VR headset required.
 
 ## Features
 
