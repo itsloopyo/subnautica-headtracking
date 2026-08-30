@@ -56,6 +56,7 @@ $projectDir = Split-Path -Parent $scriptDir
 $csprojPath = Join-Path $projectDir "src\SubnauticaHeadTracking\SubnauticaHeadTracking.csproj"
 $manifestPath = Join-Path $projectDir "launcher-manifest.json"
 $changelogPath = Join-Path $projectDir "CHANGELOG.md"
+$installCmdPath = Join-Path $projectDir "scripts\install.cmd"
 
 Import-Module (Join-Path $projectDir "cameraunlock-core\powershell\ReleaseWorkflow.psm1") -Force
 
@@ -166,6 +167,13 @@ $manifestText = Get-Content $manifestPath -Raw
 $manifestText = $manifestText -replace '("mod_info":\s*\{[^}]*?"version":\s*")[^"]*(")', "`${1}$Version`$2"
 Set-Content $manifestPath $manifestText -NoNewline
 
+# install.cmd's MOD_VERSION is what the install writes into the launcher's
+# state file, which is where the launcher looks to spot a stale install.
+$installCmdText = Get-Content $installCmdPath -Raw
+if ($installCmdText -notmatch 'set "MOD_VERSION=[^"]+"') { throw "MOD_VERSION line not found in $installCmdPath" }
+$installCmdText = $installCmdText -replace 'set "MOD_VERSION=[^"]+"', "set `"MOD_VERSION=$Version`""
+Set-Content $installCmdPath $installCmdText -NoNewline
+
 Write-Host "Building release..." -ForegroundColor Cyan
 pixi run build
 if ($LASTEXITCODE -ne 0) {
@@ -174,7 +182,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Committing changes..." -ForegroundColor Cyan
-git add $csprojPath $changelogPath $manifestPath
+git add $csprojPath $changelogPath $manifestPath $installCmdPath
 git commit -m "Release v$Version"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Commit failed" -ForegroundColor Red
