@@ -241,7 +241,7 @@ namespace SubnauticaHeadTracking.Config
             PositionLimitX = config.Bind(
                 "Position",
                 "PositionLimitX",
-                0.30f,
+                CameraUnlock.Core.Data.PositionSettings.Default.LimitX,
                 new ConfigDescription(
                     "Maximum lateral displacement in meters",
                     new AcceptableValueRange<float>(0.01f, 0.5f)
@@ -271,7 +271,7 @@ namespace SubnauticaHeadTracking.Config
             PositionLimitZ = config.Bind(
                 "Position",
                 "PositionLimitZ",
-                0.40f,
+                CameraUnlock.Core.Data.PositionSettings.Default.LimitZ,
                 new ConfigDescription(
                     "Maximum forward depth displacement in meters",
                     new AcceptableValueRange<float>(0.01f, 0.5f)
