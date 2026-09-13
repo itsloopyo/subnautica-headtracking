@@ -8,6 +8,7 @@ An unofficial head tracking mod for Subnautica that moves the view with your hea
 
 - **Decoupled look + aim**: Look around freely with your head while your aim stays independent
 - **6DOF head tracking**: Full rotation (yaw, pitch, roll) and positional tracking (X, Y, Z) via OpenTrack UDP protocol
+- **Works with any OpenTrack compatible tracker** - free options available for PC, iOS and Android
 - **World or camera-local yaw**: Toggle between gravity-aligned and horizon-independent (swim-safe) yaw on the fly
 
 ## Requirements
@@ -16,6 +17,13 @@ An unofficial head tracking mod for Subnautica that moves the view with your hea
 - [OpenTrack](https://github.com/opentrack/opentrack) or a compatible head tracking app (smartphone, webcam, or dedicated hardware)
 
 ## Installation
+
+### Lopari
+
+Download [Lopari](https://lopari.app), choose **Subnautica**, and click
+**Play with head tracking**.
+
+### Standalone Installer
 
 1. Download the latest release from the [Releases page](https://github.com/itsloopyo/subnautica-headtracking/releases)
 2. Extract the ZIP anywhere
