@@ -11,8 +11,13 @@ sync = "git submodule update --remote cameraunlock-core"
 setup = "powershell -ExecutionPolicy Bypass -File scripts/setup-libs.ps1"
 restore = { cmd = "dotnet restore src/SubnauticaHeadTracking/SubnauticaHeadTracking.csproj", depends-on = ["setup"] }
 build = { cmd = "dotnet build src/SubnauticaHeadTracking/SubnauticaHeadTracking.csproj -c Release", depends-on = ["restore"] }
-# The differential test: v1.4.0's settings reader against the frozen one the mod imports with.
-test = { cmd = "dotnet test tests/config_differential/ConfigDifferential.Tests.csproj -c Release", depends-on = ["build"] }
+# The config tests, then the differential test: v1.4.0's settings reader against the frozen
+# one the mod imports with, and the import against the migration into CameraUnlock.ini.
+test = { cmd = "dotnet test tests/SubnauticaHeadTracking.Tests/SubnauticaHeadTracking.Tests.csproj -c Release && dotnet test tests/config_differential/ConfigDifferential.Tests.csproj -c Release && node tests/config_differential/lint-migrated.mjs tests/config_differential/bin/Release/net48/migrated", depends-on = ["build"] }
+# Rewrites config/CameraUnlock.ini from the config table after a change to a row, a comment
+# or a default. The render test compares the two on every `pixi run test`, so the committed
+# file cannot drift from the code.
+render-config = { cmd = "dotnet test tests/SubnauticaHeadTracking.Tests/SubnauticaHeadTracking.Tests.csproj -c Release --filter FullyQualifiedName~ConfigTests.CommittedFileIsTheRenderedDefaults && node cameraunlock-core/scripts/encode-seed.mjs", env = { CAMERAUNLOCK_RENDER_CONFIG = "write" }, depends-on = ["setup"] }
 # Checks that every member reference the build emits resolves against the
 # assemblies it binds to at runtime. Stub/engine shape drift (a property
 # declared as a field, or the reverse) compiles cleanly and only fails in
@@ -29,6 +34,10 @@ update-deps = "powershell -ExecutionPolicy Bypass -File scripts/update-deps.ps1"
 
 # Validate release readiness
 validate-release = "powershell -ExecutionPolicy Bypass -File scripts/validate-release.ps1"
+
+# Checks the newest built installer ZIP against the launcher contract, its config descriptor
+# included, and that the Nexus ZIP carries neither CameraUnlock.ini nor the legacy .cfg.
+validate-manifest = "node cameraunlock-core/scripts/validate-manifest.mjs"
 
 # Full release workflow - creates tag and pushes to trigger CI release
 # Usage: pixi run release <major|minor|patch|X.Y.Z>

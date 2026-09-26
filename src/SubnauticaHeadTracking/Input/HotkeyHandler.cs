@@ -1,13 +1,14 @@
-using UnityEngine;
+using System;
 using BepInEx.Logging;
+using CameraUnlock.Core.Input;
+using CameraUnlock.Core.Unity.Extensions;
+using SubnauticaHeadTracking.Config;
 
 namespace SubnauticaHeadTracking.Input
 {
     /// <summary>
-    /// Monitors keyboard input for the four mod hotkeys.
-    /// Each action is bound to BOTH a nav-cluster key (configurable via the cfg file)
-    /// AND a hardcoded Ctrl+Shift+&lt;letter&gt; chord, drawn from the T/Y/U/G/H/J cluster
-    /// per the CameraUnlock chord-binding standard. Either binding fires the same action.
+    /// Monitors keyboard input for the four mod hotkeys. Each is a key list from
+    /// CameraUnlock.ini, its Ctrl+Shift chord an ordinary item of the list.
     /// Called from HeadTrackingPlugin's per-frame camera callback.
     /// </summary>
     public static class HotkeyHandler
@@ -15,24 +16,21 @@ namespace SubnauticaHeadTracking.Input
         private static ManualLogSource Logger => HeadTrackingPlugin.ModLogger;
         private static bool _hasLoggedFirstCheck = false;
 
-        private static KeyCode _cachedToggleHotkey;
-        private static KeyCode _cachedCycleTrackingModeHotkey;
-        private static KeyCode _cachedToggleYawModeHotkey;
-        private static KeyCode _cachedCyclePortHotkey;
-        private static bool _cacheInitialized = false;
+        private static KeyBinding[] _toggle;
+        private static KeyBinding[] _cycleTrackingMode;
+        private static KeyBinding[] _yawMode;
+        private static KeyBinding[] _cyclePort;
 
-        /// <summary>
-        /// Invalidates the cached hotkey values, forcing them to be reloaded from config.
-        /// Call this when configuration changes.
-        /// </summary>
-        public static void InvalidateCache()
+        public static void Initialize(SubnauticaConfig config)
         {
-            _cacheInitialized = false;
+            _toggle = Parse(config.ToggleKeyName);
+            _cycleTrackingMode = Parse(config.CycleTrackingModeKeyName);
+            _yawMode = Parse(config.YawModeKeyName);
+            _cyclePort = Parse(config.CyclePortKeyName);
         }
 
         /// <summary>
         /// Checks for hotkey presses and executes corresponding actions.
-        /// Uses UnityEngine.Input.GetKeyDown() for single-frame key press detection.
         /// </summary>
         public static void CheckHotkeys()
         {
@@ -42,53 +40,25 @@ namespace SubnauticaHeadTracking.Input
                 _hasLoggedFirstCheck = true;
             }
 
-            if (!_cacheInitialized)
-            {
-                _cachedToggleHotkey = Config.ConfigurationManager.Values.ToggleHotkey;
-                _cachedCycleTrackingModeHotkey = Config.ConfigurationManager.Values.CycleTrackingModeHotkey;
-                _cachedToggleYawModeHotkey = Config.ConfigurationManager.Values.ToggleYawModeHotkey;
-                _cachedCyclePortHotkey = Config.ConfigurationManager.Values.CyclePortHotkey;
-                _cacheInitialized = true;
-            }
-
-            bool chordModifiers = IsCtrlShiftHeld();
-
-            // Toggle tracking: End or Ctrl+Shift+Y
-            if (UnityEngine.Input.GetKeyDown(_cachedToggleHotkey)
-                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.Y)))
+            if (KeyBindingInput.IsTriggered(_toggle))
             {
                 HandleToggleHotkey();
             }
 
-            // Cycle tracking mode: Page Up or Ctrl+Shift+G
-            if (UnityEngine.Input.GetKeyDown(_cachedCycleTrackingModeHotkey)
-                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.G)))
+            if (KeyBindingInput.IsTriggered(_cycleTrackingMode))
             {
-                HandleCycleTrackingModeHotkey();
+                State.TrackingState.CycleMode();
             }
 
-            // Toggle yaw mode (world ↔ local): Insert or Ctrl+Shift+U
-            if (UnityEngine.Input.GetKeyDown(_cachedToggleYawModeHotkey)
-                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.U)))
+            if (KeyBindingInput.IsTriggered(_yawMode))
             {
                 State.TrackingState.ToggleYawMode();
             }
 
-            // Cycle UDP port: Page Down or Ctrl+Shift+H
-            if (UnityEngine.Input.GetKeyDown(_cachedCyclePortHotkey)
-                || (chordModifiers && UnityEngine.Input.GetKeyDown(KeyCode.H)))
+            if (KeyBindingInput.IsTriggered(_cyclePort))
             {
                 HeadTrackingPlugin.CyclePort();
             }
-        }
-
-        private static bool IsCtrlShiftHeld()
-        {
-            bool ctrl = UnityEngine.Input.GetKey(KeyCode.LeftControl)
-                     || UnityEngine.Input.GetKey(KeyCode.RightControl);
-            bool shift = UnityEngine.Input.GetKey(KeyCode.LeftShift)
-                      || UnityEngine.Input.GetKey(KeyCode.RightShift);
-            return ctrl && shift;
         }
 
         /// <summary>
@@ -106,13 +76,15 @@ namespace SubnauticaHeadTracking.Input
             Logger.LogInfo($"Toggle hotkey pressed: {message}");
         }
 
-        /// <summary>
-        /// Advances the three-state tracking-mode cycle:
-        /// Full → rotation only (position disabled) → position only (rotation disabled) → Full.
-        /// </summary>
-        private static void HandleCycleTrackingModeHotkey()
+        // The table's hotkey codec has already read each list, so a failure here is a
+        // disagreement between it and KeyBindings, not a player's typo.
+        private static KeyBinding[] Parse(string text)
         {
-            State.TrackingState.CycleMode();
+            if (!KeyBindings.TryParse(text, out KeyBinding[] bindings, out string error))
+            {
+                throw new InvalidOperationException("Hotkey list '" + text + "' does not parse: " + error);
+            }
+            return bindings;
         }
     }
 }

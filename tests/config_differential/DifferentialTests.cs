@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace SubnauticaHeadTracking.ConfigDifferential
@@ -11,6 +13,7 @@ namespace SubnauticaHeadTracking.ConfigDifferential
     /// The published build's reader (the oracle, v1.4.0) against the frozen reader in
     /// src/SubnauticaHeadTracking/Legacy, on every input <see cref="Inputs.All"/> lists.
     /// </summary>
+    [Collection(OracleCollection.Name)]
     public class DifferentialTests : IDisposable
     {
         private readonly string _scratch = Path.Combine(Path.GetTempPath(), "subnautica-config-differential-" + Guid.NewGuid().ToString("N"));
@@ -28,17 +31,17 @@ namespace SubnauticaHeadTracking.ConfigDifferential
         [Fact]
         public void TheFrozenReaderReadsEveryInputAsThePublishedBuildDid()
         {
-            var failures = new List<string>();
-            int n = 0;
-            foreach (Input input in Inputs.All())
+            List<KeyValuePair<Input, Reading>> published = Readers.PublishedAll();
+            var failures = new ConcurrentBag<string>();
+            Parallel.For(0, published.Count, i =>
             {
-                string dir = Path.Combine(_scratch, (n++).ToString());
-                Reading published = Readers.Published(Path.Combine(dir, "published"), input);
-                Reading frozen = Readers.Frozen(Path.Combine(dir, "frozen"), input);
-                foreach (string difference in Compare(published, frozen)) failures.Add(input.Name + ": " + difference);
+                string dir = Path.Combine(_scratch, i.ToString());
+                Input input = published[i].Key;
+                Reading frozen = Readers.Frozen(dir, input);
+                foreach (string difference in Compare(published[i].Value, frozen)) failures.Add(input.Name + ": " + difference);
                 Directory.Delete(dir, true);
-            }
-            Assert.True(failures.Count == 0, failures.Count + " differences:\n" + string.Join("\n", failures.Take(40)));
+            });
+            Assert.True(failures.IsEmpty, failures.Count + " differences:\n" + string.Join("\n", failures.OrderBy(f => f).Take(40)));
         }
 
         /// <summary>

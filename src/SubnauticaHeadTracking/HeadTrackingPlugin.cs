@@ -75,7 +75,7 @@ namespace SubnauticaHeadTracking
             {
                 InitializeConfiguration();
                 InitializeUdpListener();
-                Camera.CameraRotationApplicator.InitializePosition();
+                Camera.CameraRotationApplicator.Initialize(Settings.Current);
                 InitializeCameraCallback();
                 LogStartupInformation();
                 initialized = true;
@@ -90,15 +90,9 @@ namespace SubnauticaHeadTracking
 
         private void InitializeConfiguration()
         {
-            Config.SettingChanged += OnConfigSettingChanged;
-            Config.ConfigReloaded += (sender, args) =>
-            {
-                Logger.LogInfo("Configuration reloaded from file");
-            };
-
-            Logger.LogInfo("Initializing configuration...");
-            ConfigurationManager.Initialize(Config);
-            Logger.LogInfo("Configuration initialized successfully");
+            Settings.Load(Config, Logger);
+            State.TrackingState.Initialize(Settings.Current);
+            Input.HotkeyHandler.Initialize(Settings.Current);
         }
 
         private const int PortRangeBase = 4242;
@@ -110,7 +104,7 @@ namespace SubnauticaHeadTracking
             Logger.LogInfo("Starting UDP receiver...");
             staticReceiver = new OpenTrackReceiver();
             staticReceiver.Log = msg => Logger.LogInfo(msg);
-            CurrentPort = ConfigurationManager.Values.UdpPort;
+            CurrentPort = Settings.Current.UdpPort;
             staticReceiver.Start(CurrentPort);
             Logger.LogInfo($"UDP receiver started on port {CurrentPort}");
         }
@@ -257,8 +251,8 @@ namespace SubnauticaHeadTracking
         private void LogStartupInformation()
         {
             Logger.LogInfo($"{PluginInfo.PLUGIN_NAME} v{PluginInfo.PLUGIN_VERSION} loaded successfully");
-            Logger.LogInfo($"Press {ConfigurationManager.Values.ToggleHotkey} to toggle tracking");
-            Logger.LogInfo($"Tracking is {(State.TrackingState.IsEnabled ? "ENABLED" : "DISABLED")} by default");
+            Logger.LogInfo($"Press {Settings.Current.ToggleKeyName} to toggle tracking");
+            Logger.LogInfo($"Tracking is {(State.TrackingState.IsEnabled ? "ENABLED" : "DISABLED")} at startup (EnableOnStartup)");
         }
 
         void OnDestroy()
@@ -317,27 +311,6 @@ namespace SubnauticaHeadTracking
             staticReceiver.Dispose();
             ModLogger?.LogInfo("UDP receiver stopped");
             staticReceiver = null;
-        }
-
-        private void OnConfigSettingChanged(object sender, EventArgs e)
-        {
-            Camera.CameraRotationApplicator.MarkSettingsDirty();
-            Input.HotkeyHandler.InvalidateCache();
-
-            if (sender is BepInEx.Configuration.ConfigEntry<int> intEntry)
-            {
-                if (intEntry.Definition.Key == "UdpPort")
-                {
-                    Logger.LogWarning("UDP port changed - restart game for changes to take effect");
-                }
-            }
-            else if (sender is BepInEx.Configuration.ConfigEntry<string> stringEntry)
-            {
-                if (stringEntry.Definition.Key == "BindAddress")
-                {
-                    Logger.LogWarning("Bind address changed - restart game for changes to take effect");
-                }
-            }
         }
     }
 }

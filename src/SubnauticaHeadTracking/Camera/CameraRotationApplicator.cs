@@ -5,6 +5,7 @@ using CameraUnlock.Core.Data;
 using CameraUnlock.Core.Math;
 using CameraUnlock.Core.Processing;
 using CameraUnlock.Core.Protocol;
+using SubnauticaHeadTracking.Config;
 using SubnauticaHeadTracking.GameState;
 
 namespace SubnauticaHeadTracking.Camera
@@ -35,12 +36,8 @@ namespace SubnauticaHeadTracking.Camera
         private static readonly Vector3 SwimOffset = new Vector3(0f, -0.025f, 0.025f); // down + forward in view space
         private const float SwimBlendSpeed = 5f;
 
-        // Cached settings to avoid per-frame config reads and struct creation
-        private static bool _settingsDirty = true;
-        private static SensitivitySettings _cachedSensitivity;
-        private static DeadzoneSettings _cachedDeadzone;
-        private static float _cachedLocalSmoothing;
-        private static float _cachedRemoteSmoothing;
+        private static float _localSmoothing;
+        private static float _remoteSmoothing;
         private static bool _cachedIsRemoteConnection;
 
         /// <summary>
@@ -67,37 +64,40 @@ namespace SubnauticaHeadTracking.Camera
         public static bool PositionEnabled => State.TrackingState.IsPositionEnabled;
 
         /// <summary>
-        /// Initializes position processing components.
+        /// Sets up the rotation and position processing from the settings the session runs on.
         /// </summary>
-        public static void InitializePosition()
+        public static void Initialize(SubnauticaConfig config)
         {
+            _localSmoothing = config.LocalSmoothing;
+            _remoteSmoothing = config.RemoteSmoothing;
+
+            processor.Sensitivity = PoseConversion.Rotation;
+            processor.LocalSmoothing = _localSmoothing;
+            processor.RemoteSmoothing = _remoteSmoothing;
+
+            // Every slot is named. The constructor takes ten consecutive floats, so a
+            // positional call binds silently to whatever arity the signature happens to
+            // have: the smoothing split already turned one such call site into a
+            // limit-fed-as-smoothing bug fleet-wide. Naming makes any future shift of the
+            // parameter list a compile error here instead.
+            PositionSettings limits = config.Position;
             _positionProcessor = new PositionProcessor
             {
-                Settings = BuildPositionSettings()
+                Settings = new PositionSettings(
+                    sensitivityX: PoseConversion.PositionScale,
+                    sensitivityY: PoseConversion.PositionScale,
+                    sensitivityZ: PoseConversion.PositionScale,
+                    limitX: limits.LimitX,
+                    limitY: limits.LimitY,
+                    limitYDown: limits.LimitYDown,
+                    limitZ: limits.LimitZ,
+                    limitZBack: limits.LimitZBack,
+                    localSmoothing: _localSmoothing,
+                    remoteSmoothing: _remoteSmoothing,
+                    invertX: true, invertY: false, invertZ: false
+                )
             };
             _positionInterpolator = new PositionInterpolator();
-        }
-
-        // Every slot is named. The constructor takes ten consecutive floats, so a
-        // positional call binds silently to whatever arity the signature happens to
-        // have: the smoothing split already turned one such call site into a
-        // limit-fed-as-smoothing bug fleet-wide. Naming makes any future shift of the
-        // parameter list a compile error here instead.
-        private static PositionSettings BuildPositionSettings()
-        {
-            return new PositionSettings(
-                sensitivityX: Config.ConfigurationManager.Values.PositionSensitivityX,
-                sensitivityY: Config.ConfigurationManager.Values.PositionSensitivityY,
-                sensitivityZ: Config.ConfigurationManager.Values.PositionSensitivityZ,
-                limitX: Config.ConfigurationManager.Values.PositionLimitX,
-                limitY: Config.ConfigurationManager.Values.PositionLimitY,
-                limitYDown: Config.ConfigurationManager.Values.PositionLimitYDown,
-                limitZ: Config.ConfigurationManager.Values.PositionLimitZ,
-                limitZBack: Config.ConfigurationManager.Values.PositionLimitZBack,
-                localSmoothing: Config.ConfigurationManager.Values.LocalSmoothing,
-                remoteSmoothing: Config.ConfigurationManager.Values.RemoteSmoothing,
-                invertX: true, invertY: false, invertZ: false
-            );
         }
 
         /// <summary>
@@ -124,9 +124,8 @@ namespace SubnauticaHeadTracking.Camera
             // Get raw pose with timestamp (needed for PoseInterpolator new-sample detection)
             TrackingPose rawPose = receiver.GetRawPose();
 
-            // Update processor settings from config (in case they changed) and pick up
-            // a connection locality change so the right smoothing parameter applies.
-            UpdateProcessorSettings(receiver);
+            // Pick up a connection locality change so the right smoothing parameter applies.
+            UpdateConnection(receiver);
 
             // Interpolate between tracking samples (30Hz → display rate via velocity extrapolation)
             TrackingPose interpolatedPose = poseInterpolator.Update(rawPose, dt);
@@ -211,78 +210,25 @@ namespace SubnauticaHeadTracking.Camera
             if (!_hasLoggedFirstApplication)
             {
                 Logger.LogInfo($"First view matrix rotation applied: Yaw={CurrentYaw:F2}°, Pitch={CurrentPitch:F2}°, Roll={CurrentRoll:F2}°");
-                Logger.LogInfo($"Smoothing: local={_cachedLocalSmoothing}, remote={_cachedRemoteSmoothing}, effective={SmoothingUtils.GetEffectiveSmoothing(_cachedLocalSmoothing, _cachedRemoteSmoothing, _cachedIsRemoteConnection)}, extrapolation fraction={poseInterpolator.MaxExtrapolationFraction}");
-                Logger.LogInfo("Head tracking uses camera-local rotation (no horizon lock - swimming-safe)");
+                Logger.LogInfo($"Smoothing: local={_localSmoothing}, remote={_remoteSmoothing}, effective={SmoothingUtils.GetEffectiveSmoothing(_localSmoothing, _remoteSmoothing, _cachedIsRemoteConnection)}, extrapolation fraction={poseInterpolator.MaxExtrapolationFraction}");
+                Logger.LogInfo($"Yaw turns around {(State.TrackingState.WorldSpaceYaw ? "the world's up axis" : "the camera's own up axis")}");
                 _hasLoggedFirstApplication = true;
             }
         }
 
         /// <summary>
-        /// Marks settings as dirty, forcing them to be reloaded on the next frame.
-        /// Call this when configuration changes.
+        /// Hands both processors the connection flag when the tracker moves between this
+        /// machine and another device, which selects LocalSmoothing or RemoteSmoothing.
         /// </summary>
-        public static void MarkSettingsDirty()
-        {
-            _settingsDirty = true;
-        }
-
-        /// <summary>
-        /// Updates processor settings from the configuration manager.
-        /// Only rebuilds settings when they are marked dirty (config changed) or when
-        /// the connection switched between a local and a remote tracker.
-        /// </summary>
-        /// <param name="receiver">Core OpenTrack receiver providing the connection locality</param>
-        private static void UpdateProcessorSettings(OpenTrackReceiver receiver)
+        private static void UpdateConnection(OpenTrackReceiver receiver)
         {
             bool isRemoteConnection = receiver.IsRemoteConnection;
-            if (isRemoteConnection != _cachedIsRemoteConnection)
-            {
-                _cachedIsRemoteConnection = isRemoteConnection;
-                _settingsDirty = true;
-            }
+            if (isRemoteConnection == _cachedIsRemoteConnection) return;
 
-            if (!_settingsDirty) return;
-
-            _settingsDirty = false;
-
-            // Cache and apply sensitivity settings
-            _cachedSensitivity = new SensitivitySettings(
-                Config.ConfigurationManager.Values.YawSensitivity,
-                Config.ConfigurationManager.Values.PitchSensitivity,
-                Config.ConfigurationManager.Values.RollSensitivity,
-                Config.ConfigurationManager.Values.YawInvert,
-                Config.ConfigurationManager.Values.PitchInvert,
-                Config.ConfigurationManager.Values.RollInvert
-            );
-            processor.Sensitivity = _cachedSensitivity;
-
-            // Cache and apply deadzone settings
-            _cachedDeadzone = new DeadzoneSettings(
-                Config.ConfigurationManager.Values.YawDeadzone,
-                Config.ConfigurationManager.Values.PitchDeadzone,
-                Config.ConfigurationManager.Values.RollDeadzone
-            );
-            processor.Deadzone = _cachedDeadzone;
-
-            // Both smoothing values go to the processors as-is; the library selects
-            // between them from the connection flag. No floor is applied.
-            _cachedLocalSmoothing = Config.ConfigurationManager.Values.LocalSmoothing;
-            _cachedRemoteSmoothing = Config.ConfigurationManager.Values.RemoteSmoothing;
-            processor.LocalSmoothing = _cachedLocalSmoothing;
-            processor.RemoteSmoothing = _cachedRemoteSmoothing;
-            processor.IsRemoteConnection = _cachedIsRemoteConnection;
-
-            // Position carries the smoothing pair and the limits inside PositionSettings,
-            // so the whole struct is rebuilt here; only the connection flag is runtime
-            // state on the processor.
-            if (_positionProcessor != null)
-            {
-                _positionProcessor.Settings = BuildPositionSettings();
-                _positionProcessor.IsRemoteConnection = _cachedIsRemoteConnection;
-            }
-
-            Logger.LogInfo("Processor settings updated from configuration");
+            _cachedIsRemoteConnection = isRemoteConnection;
+            processor.IsRemoteConnection = isRemoteConnection;
+            _positionProcessor.IsRemoteConnection = isRemoteConnection;
+            Logger.LogInfo($"Tracker connection is {(isRemoteConnection ? "remote" : "local")}");
         }
-
     }
 }

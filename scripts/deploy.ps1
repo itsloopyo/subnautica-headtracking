@@ -38,10 +38,11 @@ Write-DeploymentSuccess `
     -ModName "Head Tracking mod" `
     -DeployPath $result.DeployedDllPath `
     -Controls @(
-        "End       - Toggle head tracking on/off",
-        "Page Up   - Cycle tracking mode (full / rotation-only / position-only)",
-        "Insert    - Toggle yaw mode (world / local)",
-        "Page Down - Cycle UDP port (4242-4245)",
+        "End          - Toggle head tracking on/off",
+        "Page Up      - Cycle tracking mode (full / rotation-only / position-only)",
+        "Page Down    - Toggle yaw mode (world / local)",
+        "Ctrl+Shift+J - Cycle UDP port (4242-4245)",
         "",
-        "No nav cluster? Chords: Ctrl+Shift+ Y=Toggle G=Mode U=Yaw H=Port"
+        "No nav cluster? Chords: Ctrl+Shift+ Y=Toggle G=Mode H=Yaw",
+        "These are a new CameraUnlock.ini's keys; one imported from the old .cfg keeps the keys you had."
     )

@@ -4,12 +4,19 @@
 
 An unofficial head tracking mod for Subnautica that moves the view with your head while your mouse or controller keeps aiming, driven by OpenTrack over UDP, with no VR headset required.
 
+Settings live in `BepInEx\config\CameraUnlock.ini`, not in the BepInEx
+`.cfg` earlier versions used, so BepInEx's ConfigurationManager no longer lists
+them. Edit the file with any text editor. The first start after updating reads
+your settings from the old `.cfg` into `CameraUnlock.ini` and leaves the `.cfg`
+as it was. See [Configuration](#configuration).
+
 ## Features
 
 - **Decoupled look + aim**: Look around freely with your head while your aim stays independent
 - **6DOF head tracking**: Full rotation (yaw, pitch, roll) and positional tracking (X, Y, Z) via OpenTrack UDP protocol
 - **Works with any OpenTrack compatible tracker** - free options available for PC, iOS and Android
 - **World or camera-local yaw**: Toggle between gravity-aligned and horizon-independent (swim-safe) yaw on the fly
+- **Remembered modes**: the tracking mode and the yaw mode are saved when you change them and come back at the next start
 
 ## Requirements
 
@@ -109,110 +116,158 @@ view sits off to one side, centre it in the tracker.
 
 ## Controls
 
-Two equivalent binding sets - use whichever your keyboard has:
+Each action has a list of keys in `CameraUnlock.ini`, and pressing any of them
+fires it. A new `CameraUnlock.ini` starts with these:
 
 | Action              | Nav-cluster | Chord           |
 |---------------------|-------------|-----------------|
 | Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
 | Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
-| Toggle yaw mode     | `Insert`    | `Ctrl+Shift+U`  |
-| Cycle UDP port      | `Page Down` | `Ctrl+Shift+H`  |
+| Toggle yaw mode     | `Page Down` | `Ctrl+Shift+H`  |
+| Cycle UDP port      |             | `Ctrl+Shift+J`  |
+
+Updating from an earlier version keeps the keys you had. Earlier versions put
+the yaw mode on `Insert` / `Ctrl+Shift+U` and the port on `Page Down` /
+`Ctrl+Shift+H`, and that is what the imported `YawModeKey` and `CyclePortKey`
+hold. Change any of them in `CameraUnlock.ini`.
 
 The mod applies the pose your tracker sends and keeps no centre of its own. To
 recentre, use the centre control in your tracker app: Center in opentrack,
 CENTER in Headcam, or the equivalent in whatever you run.
 
-`Page Up` / `Ctrl+Shift+G` cycles tracking mode:
+The tracking mode key cycles:
 
 1. Normal head-tracked gameplay
 2. Positional tracking disabled, rotational tracking enabled
 3. Rotational tracking disabled, positional tracking enabled
 4. Back to normal
 
-`Insert` / `Ctrl+Shift+U` toggles yaw between camera-local (default) and world-space (gravity-aligned). Camera-local is horizon-independent, so it behaves correctly while swimming at any orientation; world-space keeps yaw level with the horizon when you are upright.
+The yaw mode key toggles yaw between camera-local (default) and world-space
+(gravity-aligned). Camera-local is horizon-independent, so it behaves correctly
+while swimming at any orientation; world-space keeps yaw level with the horizon
+when you are upright.
 
-`Page Down` / `Ctrl+Shift+H` cycles the UDP listen port through 4242 → 4243 → 4244 → 4245 → 4242 (useful for couch co-op with multiple game instances on the same PC).
+Both are saved to `CameraUnlock.ini` when you change them, and the next start
+uses them. The toggle key changes the current session only: whether tracking is
+on at start is `EnableOnStartup`.
+
+The UDP port key moves the listen port through 4242 → 4243 → 4244 → 4245 → 4242,
+for a second copy of the game on the same PC. It lasts until the game closes.
 
 ## Configuration
 
-The mod creates a config file at `BepInEx/config/com.cameraunlock.subnautica.headtracking.cfg` on first run. Edit settings there and restart the game to apply changes.
+<!-- cameraunlock:config -->
+The mod reads its settings from `BepInEx\config\CameraUnlock.ini` in the game folder, and creates the file when it starts and finds none. Edit it with any text editor.
 
-A comment has to sit on its own line. BepInEx splits each line at the first `=`
-and takes everything after it as the value, so a trailing `# note` becomes part
-of the value, the conversion fails, and the entry silently keeps its default -
-the only trace is a line in `BepInEx/LogOutput.log`. Put explanations above the
-key, never after it.
+A setting set to `default` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
+
+`Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
+
+When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app, or the game runs on Linux or macOS without Wine or Proton. The mod never changes `Defaults.ini` after that. Edit it with any text editor.
+
+Earlier versions of the mod kept these settings in `com.cameraunlock.subnautica.headtracking.cfg`, in the same folder. The first time this version starts and finds no `CameraUnlock.ini`, it reads your settings from `com.cameraunlock.subnautica.headtracking.cfg` and writes them into `CameraUnlock.ini`. It never changes `com.cameraunlock.subnautica.headtracking.cfg`, and does not read it again while `CameraUnlock.ini` exists.
+
+A setting that the defaults below set to `default` is written as `default` when the value imported for it equals its default at that start, which is the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none. It then follows `Defaults.ini`. Every other setting is written with the value imported for it. `RotationEnabled` and `PositionEnabled` are one setting here, the tracking mode, so both are written as `default` or neither is.
+
+Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
+
+- Reticle settings, and a key that toggled the reticle.
+- A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
+- The setting for a feature that earlier versions shipped switched off while it was untested. It now follows the mod's default.
+
+An older version of the mod reads `com.cameraunlock.subnautica.headtracking.cfg` and never reads `CameraUnlock.ini`, so a setting you change after updating is not in `com.cameraunlock.subnautica.headtracking.cfg`.
+
+Deleting only `CameraUnlock.ini` makes the next start read `com.cameraunlock.subnautica.headtracking.cfg` again. To go back to the defaults, replace everything in `CameraUnlock.ini` with the defaults below. Every setting they set to `default` then follows `Defaults.ini`.
+
+On Linux and macOS without Wine or Proton, this version reads its settings and saves none: it creates no `CameraUnlock.ini`, reads your settings from `com.cameraunlock.subnautica.headtracking.cfg` again at every start while there is no `CameraUnlock.ini`, and a change made in game lasts until the game closes.
+
+BepInEx's ConfigurationManager no longer lists these settings.
+
+The built-in value of each setting set to `default` below:
+
+- `UdpPort=4242`
+- `EnableOnStartup=true`
+- `RotationEnabled=true`
+- `LocalSmoothing=0.0`
+- `RemoteSmoothing=0.15`
+- `PositionEnabled=true`
+- `PositionLimitX=0.3`
+- `PositionLimitY=0.2`
+- `PositionLimitYDown=0.2`
+- `PositionLimitZ=0.4`
+- `PositionLimitZBack=0.1`
+- `ToggleKey=End, Ctrl+Shift+Y`
+- `CycleTrackingModeKey=PageUp, Ctrl+Shift+G`
+- `YawModeKey=PageDown, Ctrl+Shift+H`
+
+With every setting at its default, the file reads:
 
 ```ini
+; Subnautica head tracking settings.
+; Comments start with ; and go on their own line. Text after a value is part of the value.
+; Hotkeys are key names such as End, PageUp or Ctrl+Shift+Y. Separate several with commas; leave empty for none.
+; A setting set to default takes its value from Defaults.ini, which every head tracking mod
+; that keeps its settings in CameraUnlock.ini reads: %AppData%\CameraUnlock\Defaults.ini on
+; Windows, $XDG_CONFIG_HOME/CameraUnlock/Defaults.ini (normally ~/.config/CameraUnlock) on
+; Linux, under Wine and Proton too, and ~/Library/Application Support/CameraUnlock/Defaults.ini
+; on macOS. The log names the file it read. Write a value instead of default to change that
+; setting for this game only.
+
+[CameraUnlock]
+; Written by the mod. Leave this section in place.
+ConfigFormat=1
+
 [Network]
-# UDP port for OpenTrack packets (restart required)
-UdpPort = 4242
-# Bind address (use 127.0.0.1 for local only)
-BindAddress = 0.0.0.0
+; UDP port the mod receives tracker data on (OpenTrack protocol).
+UdpPort=default
 
-[Sensitivity]
-# Left/right sensitivity (0.1-3.0)
-Yaw = 1.0
-# Up/down sensitivity (0.1-3.0)
-Pitch = 1.0
-# Tilt sensitivity (0.1-3.0)
-Roll = 1.0
+[General]
+; true: head tracking is on when the game starts. ToggleKey turns it on and off.
+EnableOnStartup=default
+; true: yaw turns around the world's up axis. false: around the camera's own up axis.
+WorldSpaceYaw=false
+; true: turning your head turns the view.
+; Tracking mode at startup, with PositionEnabled. The mode hotkey changes both.
+RotationEnabled=default
 
-[Deadzone]
-# Degrees of yaw ignored (0.0-10.0)
-Yaw = 0.0
-# Degrees of pitch ignored (0.0-10.0)
-Pitch = 0.0
-# Degrees of roll ignored (0.0-10.0)
-Roll = 0.0
-
-[Inversion]
-YawInvert = false
-# Inverted by default
-PitchInvert = true
-RollInvert = false
-
-[Hotkeys]
-# Enable/disable tracking
-Toggle = End
-# Cycle tracking mode (full -> rotation only -> position only)
-CycleTrackingMode = PageUp
-# Toggle yaw: camera-local <-> world-space
-ToggleYawMode = Insert
-# Cycle UDP port 4242-4245
-CyclePort = PageDown
-
-[Advanced]
-# Smoothing when the tracker runs on this machine (0.0-1.0)
-LocalSmoothing = 0.0
-# Smoothing when the tracker is a remote network device (0.0-1.0)
-RemoteSmoothing = 0.15
+[Smoothing]
+; Smoothing when the tracker runs on this PC. 0 is the least, 1 the most.
+LocalSmoothing=default
+; Smoothing when the tracker is another device on the network, such as a phone.
+; 0 is the least, 1 the most.
+RemoteSmoothing=default
 
 [Position]
-# Enable positional tracking
-PositionEnabled = true
-# Lateral sensitivity (0.0-3.0)
-PositionSensitivityX = 2.0
-# Vertical sensitivity (0.0-3.0)
-PositionSensitivityY = 2.0
-# Depth sensitivity (0.0-3.0)
-PositionSensitivityZ = 2.0
-# Max lateral offset in meters (0.01-0.5)
-PositionLimitX = 0.30
-# Max upward offset in meters (0.0-0.5)
-PositionLimitY = 0.15
-# Max downward offset in meters (0.0-0.5)
-PositionLimitYDown = 0.01
-# Max forward offset in meters (0.01-0.5)
-PositionLimitZ = 0.40
-# Max backward offset in meters (0.01-0.5)
-PositionLimitZBack = 0.02
+; true: moving your head moves the view.
+; Tracking mode at startup, with RotationEnabled. The mode hotkey changes both.
+PositionEnabled=default
+; How far, in metres, leaning left or right can move the view.
+PositionLimitX=default
+; How far, in metres, raising your head can move the view.
+PositionLimitY=default
+; How far, in metres, lowering your head can move the view.
+PositionLimitYDown=default
+; How far, in metres, leaning forward can move the view.
+PositionLimitZ=default
+; How far, in metres, leaning back can move the view.
+PositionLimitZBack=default
+
+[Hotkeys]
+; Turns head tracking on and off.
+ToggleKey=default
+; Changes the tracking mode: rotation and position, rotation only, position only.
+CycleTrackingModeKey=default
+; Switches yaw between the world's up axis and the camera's own (WorldSpaceYaw).
+YawModeKey=default
+; Moves the tracker port to the next of 4242, 4243, 4244 and 4245, for a second copy
+; of the game on this PC. The port goes back to UdpPort when the game restarts.
+CyclePortKey=Ctrl+Shift+J
 ```
+<!-- /cameraunlock:config -->
 
 Smoothing covers both rotation and position. Which of the two values applies is
 decided per connection from the packet source address: a tracker running on this
 PC uses `LocalSmoothing`, a phone or other network device uses `RemoteSmoothing`.
-Switching between them takes effect without restarting the game.
 
 ## Troubleshooting
 
@@ -229,15 +284,14 @@ Switching between them takes effect without restarting the game.
 - If the view sits off to one side, press centre in your tracker app
 
 **A config edit had no effect:**
-- Make sure nothing follows the value on the line. A trailing `# comment` is read as part of the value, the entry falls back to its default, and the game gives no sign of it. `BepInEx/LogOutput.log` records the failed conversion.
+- Make sure nothing follows the value on the line. A trailing `; comment` is read as part of the value, and the setting keeps its default. `BepInEx/LogOutput.log` names the line and the value it could not read.
 
 **Camera jittering:**
-- Increase deadzone values in config
-- Increase RemoteSmoothing (phone/network tracker) or LocalSmoothing (tracker on this PC), with nothing after the value on the line
+- Increase RemoteSmoothing (phone/network tracker) or LocalSmoothing (tracker on this PC) in `CameraUnlock.ini`
 - Improve lighting for webcam-based tracking
 
 **Wrong rotation direction:**
-- Toggle the appropriate Invert setting in config
+- Invert that axis in your tracker app. The mod has no inversion or sensitivity settings of its own.
 
 ## Updating
 
@@ -245,7 +299,7 @@ Download the new release and run `install.cmd` again. It will update the mod fil
 
 ## Uninstalling
 
-Run `uninstall.cmd` from the release folder. This removes the mod DLLs and optionally removes BepInEx if it was installed by the mod.
+Run `uninstall.cmd` from the release folder. This removes the mod DLLs and optionally removes BepInEx if it was installed by the mod. It keeps `BepInEx\config\CameraUnlock.ini` and the `.cfg` earlier versions used.
 
 To remove manually, delete from `BepInEx/plugins/`:
 - `SubnauticaHeadTracking.dll`
@@ -283,6 +337,8 @@ pixi run package
 | `pixi run build` | Build the mod (Release configuration) |
 | `pixi run install` | Build and install to game directory |
 | `pixi run uninstall` | Remove the mod from the game |
+| `pixi run test` | Run the config tests and the differential test |
+| `pixi run render-config` | Rewrite `config/CameraUnlock.ini` after a change to the config table |
 | `pixi run package` | Create release ZIP |
 | `pixi run clean` | Clean build artifacts |
 | `pixi run release` | Version bump, build, tag, and push |

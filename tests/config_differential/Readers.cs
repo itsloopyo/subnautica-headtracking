@@ -7,7 +7,10 @@ using System.Linq;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
+using CameraUnlock.Core.Input;
 using SubnauticaHeadTracking.Legacy;
+using UnityEngine;
+using Xunit;
 using PublishedReader = oracle::SubnauticaHeadTracking.Config.ConfigurationManager;
 using PublishedInfo = oracle::SubnauticaHeadTracking.PluginInfo;
 
@@ -27,8 +30,49 @@ namespace SubnauticaHeadTracking.ConfigDifferential
         public LegacyConfig Values;
     }
 
+    /// <summary>
+    /// v1.4.0 keeps its settings in static properties, so no two tests run it at once.
+    /// </summary>
+    [CollectionDefinition(Name)]
+    public sealed class OracleCollection
+    {
+        public const string Name = "v1.4.0 oracle";
+    }
+
     internal static class Readers
     {
+        private static readonly Lazy<List<KeyValuePair<Input, Reading>>> PublishedInputs =
+            new Lazy<List<KeyValuePair<Input, Reading>>>(ReadAllPublished);
+
+        /// <summary>
+        /// Every input <see cref="Inputs.All"/> lists, with what v1.4.0 made of it, read once for
+        /// the test run: it is the one reader that cannot run two inputs at once.
+        /// </summary>
+        public static List<KeyValuePair<Input, Reading>> PublishedAll()
+        {
+            return PublishedInputs.Value;
+        }
+
+        private static List<KeyValuePair<Input, Reading>> ReadAllPublished()
+        {
+            string scratch = Path.Combine(Path.GetTempPath(), "subnautica-config-published-" + Guid.NewGuid().ToString("N"));
+            var read = new List<KeyValuePair<Input, Reading>>();
+            try
+            {
+                foreach (Input input in Inputs.All())
+                {
+                    string dir = Path.Combine(scratch, read.Count.ToString());
+                    read.Add(new KeyValuePair<Input, Reading>(input, Published(dir, input)));
+                    Directory.Delete(dir, true);
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(scratch)) Directory.Delete(scratch, true);
+            }
+            return read;
+        }
+
         /// <summary>
         /// v1.4.0 on <paramref name="input"/>, written as the legacy file into
         /// <paramref name="dir"/>: BaseUnityPlugin's ConfigFile, then the published Initialize,
@@ -115,6 +159,18 @@ namespace SubnauticaHeadTracking.ConfigDifferential
                 if (!same) differences.Add(field.Name + ": " + x + " != " + y);
             }
             return differences;
+        }
+
+        /// <summary>
+        /// The bindings v1.4.0's HotkeyHandler polled for one action: the configured key, which
+        /// never fires as KeyCode.None, and the Ctrl+Shift chord written in code.
+        /// </summary>
+        public static KeyBinding[] PublishedBindings(KeyCode key, KeyCode chordLetter)
+        {
+            var bindings = new List<KeyBinding>();
+            if (key != KeyCode.None) bindings.Add(new KeyBinding(KeyModifiers.None, (int)key));
+            bindings.Add(new KeyBinding(KeyModifiers.Ctrl | KeyModifiers.Shift, (int)chordLetter));
+            return bindings.ToArray();
         }
     }
 

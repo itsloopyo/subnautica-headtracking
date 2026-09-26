@@ -1,10 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- net48: the mod's own framework, and BepInEx 5's ConfigFile, which the oracle and the
-       frozen reader run on, is a .NET Framework assembly. -->
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
-    <AssemblyName>SubnauticaHeadTracking.ConfigDifferential</AssemblyName>
-    <RootNamespace>SubnauticaHeadTracking.ConfigDifferential</RootNamespace>
+    <AssemblyName>SubnauticaHeadTracking.Tests</AssemblyName>
+    <RootNamespace>SubnauticaHeadTracking.Tests</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <IsPackable>false</IsPackable>
@@ -21,11 +19,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\cameraunlock-core\csharp\src\CameraUnlock.Core\CameraUnlock.Core.csproj" />
-    <ProjectReference Include="oracle\Oracle.csproj" Aliases="oracle" />
   </ItemGroup>
 
-  <!-- The vendored BepInEx and the Unity stubs, copied beside the tests so the oracle and the
-       frozen reader run on the same ConfigFile. -->
+  <!-- The legacy import runs on BepInEx's ConfigFile and reads UnityEngine.KeyCode, so the
+       vendored BepInEx and the Unity stubs are copied beside the tests. -->
   <ItemGroup>
     <Reference Include="BepInEx">
       <HintPath>..\..\src\SubnauticaHeadTracking\libs\BepInEx.dll</HintPath>
@@ -35,16 +32,15 @@
     </Reference>
   </ItemGroup>
 
+  <!-- The mod's config code, compiled from its own sources. Each file is free of the Unity
+       engine calls the stubs cannot run. -->
   <ItemGroup>
-    <Compile Remove="oracle\**" />
-    <None Remove="oracle\**" />
-    <Compile Include="..\..\src\SubnauticaHeadTracking\Legacy\*.cs" LinkBase="Legacy" />
     <Compile Include="..\..\src\SubnauticaHeadTracking\PluginInfo.cs" Link="Mod\PluginInfo.cs" />
     <Compile Include="..\..\src\SubnauticaHeadTracking\Config\SubnauticaConfig.cs" Link="Mod\Config\SubnauticaConfig.cs" />
     <Compile Include="..\..\src\SubnauticaHeadTracking\Config\SubnauticaConfigImport.cs" Link="Mod\Config\SubnauticaConfigImport.cs" />
     <Compile Include="..\..\src\SubnauticaHeadTracking\Config\SubnauticaConfigOwner.cs" Link="Mod\Config\SubnauticaConfigOwner.cs" />
     <Compile Include="..\..\src\SubnauticaHeadTracking\Camera\PoseConversion.cs" Link="Mod\Camera\PoseConversion.cs" />
     <Compile Include="..\..\src\SubnauticaHeadTracking\State\StartupState.cs" Link="Mod\State\StartupState.cs" />
-    <Compile Include="..\..\cameraunlock-core\csharp\testing\IniMutations.cs" Link="IniMutations.cs" />
+    <Compile Include="..\..\src\SubnauticaHeadTracking\Legacy\*.cs" LinkBase="Mod\Legacy" />
   </ItemGroup>
 </Project>
