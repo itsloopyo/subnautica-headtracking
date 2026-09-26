@@ -1,0 +1,19 @@
+# What the differential test compiles and runs, pinned by the SHA-256 of its bytes with CRLF
+# read as LF (the BepInEx row: the bytes as they are). Columns: role, repo path, sha256, source.
+# v1.4.0 (tag v1.4.0, core pin 3465659) is the newest published build and there is no dev
+# pre-release. Its reader calls no cameraunlock-core source: every default is a literal or a
+# PluginInfo constant, and the frozen copy spells those constants out in a nested class.
+# The first-run files were written once, by compiling each build's ConfigurationManager.cs and
+# PluginInfo.cs at its tag and calling Initialize on a ConfigFile with no file, as BaseUnityPlugin
+# builds it, on BepInEx 5.4.23.5 under .NET Framework 4.8 with a KeyCode enum holding every name
+# in core's data/keys.json. Only the '# Acceptable values' comment lines depend on that enum.
+oracle	tests/config_differential/oracle/v1.4.0/ConfigurationManager.cs	6ac243a29063d45bc521a067218cc5c4e88769c1b1adba07d83397a1cf73c2ca	v1.4.0:src/SubnauticaHeadTracking/Config/ConfigurationManager.cs
+oracle	tests/config_differential/oracle/v1.4.0/PluginInfo.cs	bf30735a12b4453e6ac2f7269fbfd92fd9e8c1d300a165fd67fccf7c09690d6c	v1.4.0:src/SubnauticaHeadTracking/PluginInfo.cs
+frozen reader	src/SubnauticaHeadTracking/Legacy/LegacyConfig.cs	5046efacd9086d3e591433f790c487f928dfd09a7775db7fde2c935e5fcaf351	v1.4.0:src/SubnauticaHeadTracking/Config/ConfigurationManager.cs
+frozen reader	src/SubnauticaHeadTracking/Legacy/LegacyConfigReader.cs	7c65dda00050ed69754365c07980be42e61762f6f79baff5009bbe5b3935ed92	v1.4.0:src/SubnauticaHeadTracking/Config/ConfigurationManager.cs
+first run	tests/config_differential/data/v1.0.0/first-run.cfg	6b7ebe8f50e7dbde32742dd4a26f1a819b44d21dd210381c184b151d00253367	v1.0.0:src/SubnauticaHeadTracking/Config/ConfigurationManager.cs
+first run	tests/config_differential/data/v1.1.0-v1.1.3/first-run.cfg	c7ed61bdceab13a3943ec66ed7e94162c988d0339a71cac8b81a1dce9148c0af	v1.1.0:src/SubnauticaHeadTracking/Config/ConfigurationManager.cs
+first run	tests/config_differential/data/v1.2.0-v1.3.0/first-run.cfg	a846c488d33a4f33fa576d4b345e6698ff2ca58939db8b949a8d980e7613cfea	v1.2.0:src/SubnauticaHeadTracking/Config/ConfigurationManager.cs
+first run	tests/config_differential/data/v1.3.1/first-run.cfg	329bac93836b16c6b230c08dc3da6c3040a92e5d3e8f106fe44d04f3e56ccfdb	v1.3.1:src/SubnauticaHeadTracking/Config/ConfigurationManager.cs
+first run	tests/config_differential/data/v1.4.0/first-run.cfg	d7e01cb97a59b16803f2cbe77fa245c820878f9a6d4544c6895cb2fb004299b6	v1.4.0:src/SubnauticaHeadTracking/Config/ConfigurationManager.cs
+bepinex	src/SubnauticaHeadTracking/libs/BepInEx.dll	8255b28902886085c578b9e427d3073c97002db85176d2090cdeda90ef14ce70	vendor/bepinex/BepInEx_win_x64.zip:BepInEx/core/BepInEx.dll (5.4.23.5)

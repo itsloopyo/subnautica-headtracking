@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- net48: the mod's own framework, and BepInEx 5's ConfigFile, which the oracle and the
+       frozen reader run on, is a .NET Framework assembly. -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>SubnauticaHeadTracking.ConfigDifferential</AssemblyName>
+    <RootNamespace>SubnauticaHeadTracking.ConfigDifferential</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\cameraunlock-core\csharp\src\CameraUnlock.Core\CameraUnlock.Core.csproj" />
+    <ProjectReference Include="oracle\Oracle.csproj" Aliases="oracle" />
+  </ItemGroup>
+
+  <!-- The vendored BepInEx and the Unity stubs, copied beside the tests so the oracle and the
+       frozen reader run on the same ConfigFile. -->
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>..\..\src\SubnauticaHeadTracking\libs\BepInEx.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>..\..\src\SubnauticaHeadTracking\libs\UnityEngine.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="oracle\**" />
+    <None Remove="oracle\**" />
+    <Compile Include="..\..\src\SubnauticaHeadTracking\Legacy\*.cs" LinkBase="Legacy" />
+    <Compile Include="..\..\cameraunlock-core\csharp\testing\IniMutations.cs" Link="IniMutations.cs" />
+  </ItemGroup>
+</Project>

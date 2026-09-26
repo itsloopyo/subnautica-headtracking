@@ -44,10 +44,10 @@ namespace SubnauticaHeadTracking.Input
 
             if (!_cacheInitialized)
             {
-                _cachedToggleHotkey = Config.ConfigurationManager.ToggleHotkey.Value;
-                _cachedCycleTrackingModeHotkey = Config.ConfigurationManager.CycleTrackingModeHotkey.Value;
-                _cachedToggleYawModeHotkey = Config.ConfigurationManager.ToggleYawModeHotkey.Value;
-                _cachedCyclePortHotkey = Config.ConfigurationManager.CyclePortHotkey.Value;
+                _cachedToggleHotkey = Config.ConfigurationManager.Values.ToggleHotkey;
+                _cachedCycleTrackingModeHotkey = Config.ConfigurationManager.Values.CycleTrackingModeHotkey;
+                _cachedToggleYawModeHotkey = Config.ConfigurationManager.Values.ToggleYawModeHotkey;
+                _cachedCyclePortHotkey = Config.ConfigurationManager.Values.CyclePortHotkey;
                 _cacheInitialized = true;
             }
 

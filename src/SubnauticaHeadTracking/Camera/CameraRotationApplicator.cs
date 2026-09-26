@@ -86,16 +86,16 @@ namespace SubnauticaHeadTracking.Camera
         private static PositionSettings BuildPositionSettings()
         {
             return new PositionSettings(
-                sensitivityX: Config.ConfigurationManager.PositionSensitivityX.Value,
-                sensitivityY: Config.ConfigurationManager.PositionSensitivityY.Value,
-                sensitivityZ: Config.ConfigurationManager.PositionSensitivityZ.Value,
-                limitX: Config.ConfigurationManager.PositionLimitX.Value,
-                limitY: Config.ConfigurationManager.PositionLimitY.Value,
-                limitYDown: Config.ConfigurationManager.PositionLimitYDown.Value,
-                limitZ: Config.ConfigurationManager.PositionLimitZ.Value,
-                limitZBack: Config.ConfigurationManager.PositionLimitZBack.Value,
-                localSmoothing: Config.ConfigurationManager.LocalSmoothing.Value,
-                remoteSmoothing: Config.ConfigurationManager.RemoteSmoothing.Value,
+                sensitivityX: Config.ConfigurationManager.Values.PositionSensitivityX,
+                sensitivityY: Config.ConfigurationManager.Values.PositionSensitivityY,
+                sensitivityZ: Config.ConfigurationManager.Values.PositionSensitivityZ,
+                limitX: Config.ConfigurationManager.Values.PositionLimitX,
+                limitY: Config.ConfigurationManager.Values.PositionLimitY,
+                limitYDown: Config.ConfigurationManager.Values.PositionLimitYDown,
+                limitZ: Config.ConfigurationManager.Values.PositionLimitZ,
+                limitZBack: Config.ConfigurationManager.Values.PositionLimitZBack,
+                localSmoothing: Config.ConfigurationManager.Values.LocalSmoothing,
+                remoteSmoothing: Config.ConfigurationManager.Values.RemoteSmoothing,
                 invertX: true, invertY: false, invertZ: false
             );
         }
@@ -247,27 +247,27 @@ namespace SubnauticaHeadTracking.Camera
 
             // Cache and apply sensitivity settings
             _cachedSensitivity = new SensitivitySettings(
-                Config.ConfigurationManager.YawSensitivity.Value,
-                Config.ConfigurationManager.PitchSensitivity.Value,
-                Config.ConfigurationManager.RollSensitivity.Value,
-                Config.ConfigurationManager.YawInvert.Value,
-                Config.ConfigurationManager.PitchInvert.Value,
-                Config.ConfigurationManager.RollInvert.Value
+                Config.ConfigurationManager.Values.YawSensitivity,
+                Config.ConfigurationManager.Values.PitchSensitivity,
+                Config.ConfigurationManager.Values.RollSensitivity,
+                Config.ConfigurationManager.Values.YawInvert,
+                Config.ConfigurationManager.Values.PitchInvert,
+                Config.ConfigurationManager.Values.RollInvert
             );
             processor.Sensitivity = _cachedSensitivity;
 
             // Cache and apply deadzone settings
             _cachedDeadzone = new DeadzoneSettings(
-                Config.ConfigurationManager.YawDeadzone.Value,
-                Config.ConfigurationManager.PitchDeadzone.Value,
-                Config.ConfigurationManager.RollDeadzone.Value
+                Config.ConfigurationManager.Values.YawDeadzone,
+                Config.ConfigurationManager.Values.PitchDeadzone,
+                Config.ConfigurationManager.Values.RollDeadzone
             );
             processor.Deadzone = _cachedDeadzone;
 
             // Both smoothing values go to the processors as-is; the library selects
             // between them from the connection flag. No floor is applied.
-            _cachedLocalSmoothing = Config.ConfigurationManager.LocalSmoothing.Value;
-            _cachedRemoteSmoothing = Config.ConfigurationManager.RemoteSmoothing.Value;
+            _cachedLocalSmoothing = Config.ConfigurationManager.Values.LocalSmoothing;
+            _cachedRemoteSmoothing = Config.ConfigurationManager.Values.RemoteSmoothing;
             processor.LocalSmoothing = _cachedLocalSmoothing;
             processor.RemoteSmoothing = _cachedRemoteSmoothing;
             processor.IsRemoteConnection = _cachedIsRemoteConnection;

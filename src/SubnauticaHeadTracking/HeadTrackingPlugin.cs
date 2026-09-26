@@ -110,7 +110,7 @@ namespace SubnauticaHeadTracking
             Logger.LogInfo("Starting UDP receiver...");
             staticReceiver = new OpenTrackReceiver();
             staticReceiver.Log = msg => Logger.LogInfo(msg);
-            CurrentPort = ConfigurationManager.UdpPort.Value;
+            CurrentPort = ConfigurationManager.Values.UdpPort;
             staticReceiver.Start(CurrentPort);
             Logger.LogInfo($"UDP receiver started on port {CurrentPort}");
         }
@@ -257,7 +257,7 @@ namespace SubnauticaHeadTracking
         private void LogStartupInformation()
         {
             Logger.LogInfo($"{PluginInfo.PLUGIN_NAME} v{PluginInfo.PLUGIN_VERSION} loaded successfully");
-            Logger.LogInfo($"Press {ConfigurationManager.ToggleHotkey.Value} to toggle tracking");
+            Logger.LogInfo($"Press {ConfigurationManager.Values.ToggleHotkey} to toggle tracking");
             Logger.LogInfo($"Tracking is {(State.TrackingState.IsEnabled ? "ENABLED" : "DISABLED")} by default");
         }
 

@@ -67,6 +67,9 @@ Makefile text eol=lf
 .dockerignore text eol=lf
 docker-compose*.yml text eol=lf
 
+# The differential test reads these byte for byte, CRLF included.
+tests/config_differential/data/** -text
+
 # Binary files (do not normalize)
 *.png binary
 *.jpg binary
