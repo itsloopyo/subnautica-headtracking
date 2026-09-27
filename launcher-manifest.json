@@ -8,6 +8,16 @@
   "strategy": "BepInEx5",
   "delivery_mode": "manifest",
 
+  "config": {
+    "path": "BepInEx/config/CameraUnlock.ini",
+    "anchor": "game_root",
+    "legacy_source": "BepInEx/config/com.cameraunlock.subnautica.headtracking.cfg",
+    "canonical_since": "1.5.0",
+    "per_game": {
+      "WorldSpaceYaw": "false"
+    }
+  },
+
   "loader": {
     "archives": [
       { "source": "vendor/bepinex/BepInEx_win_x64.zip" }
