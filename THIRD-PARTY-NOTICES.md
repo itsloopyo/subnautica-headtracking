@@ -19,7 +19,7 @@ below.
 | HarmonyX | 2.9.0 | MIT | Inside the vendored BepInEx archive |
 | Mono.Cecil | 0.10.4 | MIT | Inside the vendored BepInEx archive |
 | MonoMod | 22.1.29.1 | MIT | Inside the vendored BepInEx archive |
-| cameraunlock-core | b4df73a5d8076968fcbf7e4088dd49db11a2684e | MIT | Compiled into `SubnauticaHeadTracking.dll` |
+| cameraunlock-core | 4a5e7f4d1c37efb9074f7f3651cde8327b64715a | MIT | Compiled into `SubnauticaHeadTracking.dll` |
 | OpenTrack | n/a | ISC | Not bundled; UDP protocol interoperability only |
 
 Versions for the four components inside the BepInEx archive were read from the
@@ -536,7 +536,7 @@ on this mod's LICENSE, so our licence does not cover it and its notice has to
 travel with the binary. It ships as `licenses/cameraunlock-core-LICENSE.txt` in
 both release ZIPs, and the text is reproduced here as well.
 
-- Pinned commit: `b4df73a5d8076968fcbf7e4088dd49db11a2684e`
+- Pinned commit: `4a5e7f4d1c37efb9074f7f3651cde8327b64715a`
 
 ```
 MIT License
