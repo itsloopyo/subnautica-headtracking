@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using BepInEx.Configuration;
 using CameraUnlock.Core.Config;
 using CameraUnlock.Core.Data;
@@ -37,7 +38,9 @@ namespace SubnauticaHeadTracking.Config
         /// [Position] PositionEnabled and [Network] BindAddress were read and never used, so
         /// neither is carried. The sensitivities, deadzones and inversions are pose shaping:
         /// the values it shipped are now the mod's own axis code (<see cref="PoseConversion"/>),
-        /// and one a player changed is dropped.
+        /// and one a player changed is dropped. A row the player left at v1.4.0's default, and
+        /// the startup state no player could change, follow Defaults.ini, and a port key left at
+        /// v1.4.0's default takes this version's.
         /// </summary>
         public static ImportResult Map(LegacyConfig legacy, bool found, SubnauticaConfig config)
         {
@@ -73,36 +76,69 @@ namespace SubnauticaHeadTracking.Config
                 invertX: p.InvertX, invertY: p.InvertY, invertZ: p.InvertZ);
 
             var unnamed = new List<string>();
-            config.ToggleKeyName = KeyList(legacy.ToggleHotkey, KeyCode.Y, "Toggle", unnamed);
-            config.CycleTrackingModeKeyName = KeyList(legacy.CycleTrackingModeHotkey, KeyCode.G, "CycleTrackingMode", unnamed);
-            config.YawModeKeyName = KeyList(legacy.ToggleYawModeHotkey, KeyCode.U, "ToggleYawMode", unnamed);
-            config.CyclePortKeyName = KeyList(legacy.CyclePortHotkey, KeyCode.H, "CyclePort", unnamed);
+            config.ToggleKeyName = KeyList(legacy.ToggleHotkey, KeyCode.Y, "Toggle", dropped, unnamed);
+            config.CycleTrackingModeKeyName = KeyList(legacy.CycleTrackingModeHotkey, KeyCode.G, "CycleTrackingMode", dropped, unnamed);
+            config.YawModeKeyName = KeyList(legacy.ToggleYawModeHotkey, KeyCode.U, "ToggleYawMode", dropped, unnamed);
+            config.CyclePortKeyName = KeyList(legacy.CyclePortHotkey, KeyCode.H, "CyclePort", dropped, unnamed);
+            LegacyConfig shipped = Shipped();
+            bool portUnchanged = legacy.CyclePortHotkey == shipped.CyclePortHotkey;
+            if (portUnchanged) config.CyclePortKeyName = new SubnauticaConfig().CyclePortKeyName;
             if (unnamed.Count > 0)
             {
                 return ImportResult.Undecodable(string.Join(" and ", unnamed.ToArray())
                     + " names no key this version can write");
             }
 
-            return found ? ImportResult.Imported(dropped, poseShaping) : ImportResult.Absent(dropped, poseShaping);
+            var follows = new LegacyFollowsDefaultsIni();
+            follows.Setting(ConfigConcepts.UdpPort, legacy.UdpPort, shipped.UdpPort);
+            follows.NotInLegacy(ConfigConcepts.EnableOnStartup);
+            follows.TrackingMode(true);
+            follows.Setting(ConfigConcepts.LocalSmoothing, legacy.LocalSmoothing, shipped.LocalSmoothing);
+            follows.Setting(ConfigConcepts.RemoteSmoothing, legacy.RemoteSmoothing, shipped.RemoteSmoothing);
+            follows.Setting(ConfigConcepts.PositionLimitX, legacy.PositionLimitX, shipped.PositionLimitX);
+            follows.Setting(ConfigConcepts.PositionLimitY, legacy.PositionLimitY, shipped.PositionLimitY);
+            follows.Setting(ConfigConcepts.PositionLimitYDown, legacy.PositionLimitYDown, shipped.PositionLimitYDown);
+            follows.Setting(ConfigConcepts.PositionLimitZ, legacy.PositionLimitZ, shipped.PositionLimitZ);
+            follows.Setting(ConfigConcepts.PositionLimitZBack, legacy.PositionLimitZBack, shipped.PositionLimitZBack);
+            follows.Setting(ConfigConcepts.ToggleKey, legacy.ToggleHotkey, shipped.ToggleHotkey);
+            follows.Setting(ConfigConcepts.CycleTrackingModeKey, legacy.CycleTrackingModeHotkey, shipped.CycleTrackingModeHotkey);
+            // The yaw mode's built-in keys are v1.4.0's port keys, PageDown and Ctrl+Shift+H. A port
+            // key the player changed keeps Ctrl+Shift+H, so the yaw mode then keeps v1.4.0's keys.
+            follows.Setting(ConfigConcepts.YawModeKey, legacy.ToggleYawModeHotkey == shipped.ToggleYawModeHotkey && portUnchanged);
+
+            return found
+                ? ImportResult.Imported(dropped, poseShaping, follows.Concepts)
+                : ImportResult.Absent(dropped, poseShaping, follows.Concepts);
+        }
+
+        // v1.4.0's defaults: its Bind calls on a ConfigFile with no file behind it, which reads
+        // nothing and, with SaveOnConfigSet off, writes nothing.
+        private static LegacyConfig Shipped()
+        {
+            var file = new ConfigFile(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".cfg"), false);
+            file.SaveOnConfigSet = false;
+            return LegacyConfigReader.Capture(file);
         }
 
         // v1.4.0 fired an action on its configured key, which never fires as KeyCode.None, or on
-        // the Ctrl+Shift chord written in code. A number BepInEx read that no KeyCode names has
-        // no key name to write, so the list keeps the chord alone and the key is reported.
-        private static string KeyList(KeyCode key, KeyCode chordLetter, string legacyKey, List<string> unnamed)
+        // the Ctrl+Shift chord written in code. A key on Ctrl, Shift or Alt alone is unbound and
+        // logged (N3). A number BepInEx read that no KeyCode names has no key name to write, so
+        // the list keeps the chord alone and the key is reported.
+        private static string KeyList(KeyCode key, KeyCode chordLetter, string legacyKey, List<DroppedValue> dropped,
+            List<string> unnamed)
         {
-            var chord = new KeyBinding(KeyModifiers.Ctrl | KeyModifiers.Shift, (int)chordLetter);
-            if (key == KeyCode.None) return KeyBindings.Format(new[] { chord });
-            var plain = new KeyBinding(KeyModifiers.None, (int)key);
+            string chord = KeyBindings.Format(new[] { new KeyBinding(KeyModifiers.Ctrl | KeyModifiers.Shift, (int)chordLetter) });
+            string plain;
             try
             {
-                return KeyBindings.Format(new[] { plain, chord });
+                plain = LegacyNormalisations.KeyCodeToBindings((int)key, "Hotkeys", legacyKey, dropped);
             }
             catch (ArgumentException)
             {
                 unnamed.Add("[Hotkeys] " + legacyKey + "=" + (int)key);
-                return KeyBindings.Format(new[] { chord });
+                return chord;
             }
+            return plain.Length == 0 ? chord : plain + ", " + chord;
         }
     }
 }
