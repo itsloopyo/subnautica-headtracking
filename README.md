@@ -2,21 +2,13 @@
 
 ![Subnautica running with this mod](https://raw.githubusercontent.com/itsloopyo/subnautica-headtracking/main/assets/readme-clip.gif)
 
-An unofficial head tracking mod for Subnautica that moves the view with your head while your mouse or controller keeps aiming, driven by OpenTrack over UDP, with no VR headset required.
-
-Settings live in `BepInEx\config\CameraUnlock.ini`, not in the BepInEx
-`.cfg` earlier versions used, so BepInEx's ConfigurationManager no longer lists
-them. Edit the file with any text editor. The first start after updating reads
-your settings from the old `.cfg` into `CameraUnlock.ini` and leaves the `.cfg`
-as it was. See [Configuration](#configuration).
+An unofficial head tracking mod for Subnautica that moves the view with your head while your mouse or controller keeps aiming, driven by a webcam, phone, or any OpenTrack compatible tracker, with no VR headset required.
 
 ## Features
 
 - **Decoupled look + aim**: Look around freely with your head while your aim stays independent
 - **6DOF head tracking**: Full rotation (yaw, pitch, roll) and positional tracking (X, Y, Z) via OpenTrack UDP protocol
 - **Works with any OpenTrack compatible tracker** - free options available for PC, iOS and Android
-- **World or camera-local yaw**: Toggle between gravity-aligned and horizon-independent (swim-safe) yaw on the fly
-- **Remembered modes**: the tracking mode and the yaw mode are saved when you change them and come back at the next start
 
 ## Requirements
 
@@ -125,11 +117,6 @@ fires it. A new `CameraUnlock.ini` starts with these:
 | Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
 | Toggle yaw mode     | `Page Down` | `Ctrl+Shift+H`  |
 | Cycle UDP port      |             | `Ctrl+Shift+J`  |
-
-Updating from an earlier version keeps the keys you had. Earlier versions put
-the yaw mode on `Insert` / `Ctrl+Shift+U` and the port on `Page Down` /
-`Ctrl+Shift+H`, and that is what the imported `YawModeKey` and `CyclePortKey`
-hold. Change any of them in `CameraUnlock.ini`.
 
 The mod applies the pose your tracker sends and keeps no centre of its own. To
 recentre, use the centre control in your tracker app: Center in opentrack,
@@ -299,7 +286,7 @@ Download the new release and run `install.cmd` again. It will update the mod fil
 
 ## Uninstalling
 
-Run `uninstall.cmd` from the release folder. This removes the mod DLLs and optionally removes BepInEx if it was installed by the mod. It keeps `BepInEx\config\CameraUnlock.ini` and the `.cfg` earlier versions used.
+Run `uninstall.cmd` from the release folder. This removes the mod DLLs and optionally removes BepInEx if it was installed by the mod. It keeps `BepInEx\config\CameraUnlock.ini`.
 
 To remove manually, delete from `BepInEx/plugins/`:
 - `SubnauticaHeadTracking.dll`
