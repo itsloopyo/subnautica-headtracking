@@ -13,7 +13,9 @@ restore = { cmd = "dotnet restore src/SubnauticaHeadTracking/SubnauticaHeadTrack
 build = { cmd = "dotnet build src/SubnauticaHeadTracking/SubnauticaHeadTracking.csproj -c Release", depends-on = ["restore"] }
 # The config tests, then the differential test: v1.4.0's settings reader against the frozen
 # one the mod imports with, and the import against the migration into CameraUnlock.ini.
-test = { cmd = "dotnet test tests/SubnauticaHeadTracking.Tests/SubnauticaHeadTracking.Tests.csproj -c Release && dotnet test tests/config_differential/ConfigDifferential.Tests.csproj -c Release && node tests/config_differential/lint-migrated.mjs tests/config_differential/bin/Release/net48/migrated", depends-on = ["build"] }
+test-unit = { cmd = "dotnet test tests/SubnauticaHeadTracking.Tests/SubnauticaHeadTracking.Tests.csproj -c Release", depends-on = ["build"] }
+test-differential = { cmd = "dotnet test tests/config_differential/ConfigDifferential.Tests.csproj -c Release && node tests/config_differential/lint-migrated.mjs tests/config_differential/bin/Release/net48/migrated", depends-on = ["build"] }
+test = { depends-on = ["test-unit", "test-differential"] }
 # Rewrites config/CameraUnlock.ini from the config table after a change to a row, a comment
 # or a default. The render test compares the two on every `pixi run test`, so the committed
 # file cannot drift from the code.
@@ -24,7 +26,7 @@ render-config = { cmd = "dotnet test tests/SubnauticaHeadTracking.Tests/Subnauti
 # game. Needs the game installed; skips and succeeds without it.
 verify-refs = { cmd = "powershell -ExecutionPolicy Bypass -File cameraunlock-core/scripts/verify-assembly-refs.ps1 -GameId subnautica -BuildDir src/SubnauticaHeadTracking/bin/Release", depends-on = ["build"] }
 install = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build"] }
-package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["test"] }
+package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["test-unit"] }
 uninstall = "scripts\\uninstall.cmd"
 clean = "dotnet clean src/SubnauticaHeadTracking/SubnauticaHeadTracking.csproj"
 
