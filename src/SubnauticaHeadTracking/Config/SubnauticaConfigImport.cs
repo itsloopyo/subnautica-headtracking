@@ -75,19 +75,13 @@ namespace SubnauticaHeadTracking.Config
                 localSmoothing: legacy.LocalSmoothing, remoteSmoothing: legacy.RemoteSmoothing,
                 invertX: p.InvertX, invertY: p.InvertY, invertZ: p.InvertZ);
 
-            var unnamed = new List<string>();
-            config.ToggleKeyName = KeyList(legacy.ToggleHotkey, KeyCode.Y, "Toggle", dropped, unnamed);
-            config.CycleTrackingModeKeyName = KeyList(legacy.CycleTrackingModeHotkey, KeyCode.G, "CycleTrackingMode", dropped, unnamed);
-            config.YawModeKeyName = KeyList(legacy.ToggleYawModeHotkey, KeyCode.U, "ToggleYawMode", dropped, unnamed);
-            config.CyclePortKeyName = KeyList(legacy.CyclePortHotkey, KeyCode.H, "CyclePort", dropped, unnamed);
+            config.ToggleKeyName = KeyList(legacy.ToggleHotkey, KeyCode.Y, "Toggle", dropped);
+            config.CycleTrackingModeKeyName = KeyList(legacy.CycleTrackingModeHotkey, KeyCode.G, "CycleTrackingMode", dropped);
+            config.YawModeKeyName = KeyList(legacy.ToggleYawModeHotkey, KeyCode.U, "ToggleYawMode", dropped);
+            config.CyclePortKeyName = KeyList(legacy.CyclePortHotkey, KeyCode.H, "CyclePort", dropped);
             LegacyConfig shipped = Shipped();
             bool portUnchanged = legacy.CyclePortHotkey == shipped.CyclePortHotkey;
             if (portUnchanged) config.CyclePortKeyName = new SubnauticaConfig().CyclePortKeyName;
-            if (unnamed.Count > 0)
-            {
-                return ImportResult.Undecodable(string.Join(" and ", unnamed.ToArray())
-                    + " names no key this version can write");
-            }
 
             var follows = new LegacyFollowsDefaultsIni();
             follows.Setting(ConfigConcepts.UdpPort, legacy.UdpPort, shipped.UdpPort);
@@ -121,23 +115,12 @@ namespace SubnauticaHeadTracking.Config
         }
 
         // v1.4.0 fired an action on its configured key, which never fires as KeyCode.None, or on
-        // the Ctrl+Shift chord written in code. A key on Ctrl, Shift or Alt alone is unbound and
-        // logged (N3). A number BepInEx read that no KeyCode names has no key name to write, so
-        // the list keeps the chord alone and the key is reported.
-        private static string KeyList(KeyCode key, KeyCode chordLetter, string legacyKey, List<DroppedValue> dropped,
-            List<string> unnamed)
+        // the Ctrl+Shift chord written in code. A key on Ctrl, Shift or Alt alone (N3), or a number
+        // BepInEx read that no KeyCode names (N1), is unbound and logged, and the chord stays.
+        private static string KeyList(KeyCode key, KeyCode chordLetter, string legacyKey, List<DroppedValue> dropped)
         {
             string chord = KeyBindings.Format(new[] { new KeyBinding(KeyModifiers.Ctrl | KeyModifiers.Shift, (int)chordLetter) });
-            string plain;
-            try
-            {
-                plain = LegacyNormalisations.KeyCodeToBindings((int)key, "Hotkeys", legacyKey, dropped);
-            }
-            catch (ArgumentException)
-            {
-                unnamed.Add("[Hotkeys] " + legacyKey + "=" + (int)key);
-                return chord;
-            }
+            string plain = LegacyNormalisations.KeyCodeToBindings((int)key, "Hotkeys", legacyKey, dropped);
             return plain.Length == 0 ? chord : plain + ", " + chord;
         }
     }

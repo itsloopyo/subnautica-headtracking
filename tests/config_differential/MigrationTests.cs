@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -85,8 +86,8 @@ namespace SubnauticaHeadTracking.ConfigDifferential
             foreach (KeyValuePair<string, byte[]> file in files) File.WriteAllBytes(Path.Combine(migrated, file.Key + ".ini"), file.Value);
             string summary = string.Join(", ", outcomes.OrderBy(o => o.Key).Select(o => o.Key + " " + o.Value));
             Assert.True(failures.IsEmpty, failures.Count + " failures (" + summary + "):\n" + string.Join("\n", failures.OrderBy(f => f).Take(40)));
-            Assert.True(outcomes.ContainsKey("migrated") && outcomes.ContainsKey("deferred") && outcomes.ContainsKey("created")
-                        && outcomes.ContainsKey("plugin load failure"), summary);
+            Assert.True(outcomes.ContainsKey("migrated") && outcomes.ContainsKey("created")
+                        && outcomes.ContainsKey("plugin load failure") && outcomes.Count == 3, summary);
         }
 
         /// <summary>
@@ -138,6 +139,33 @@ namespace SubnauticaHeadTracking.ConfigDifferential
 
             SubnauticaConfig fresh = Owner(Path.Combine(dir, "fresh"), DefaultsFile.At(defaultsPath)).Load().Config;
             Assert.Empty(RowDifferences(fresh, loaded.Config));
+        }
+
+        /// <summary>
+        /// A number no KeyCode names (N1) and a Ctrl, Shift or Alt key alone (N3) are unbound and
+        /// logged, the action keeps its Ctrl+Shift chord, and the file migrates at the first start.
+        /// </summary>
+        [Fact]
+        public void AnUnnamedKeyCodeAndAModifierKeyImportAsUnbound()
+        {
+            string dir = Path.Combine(_scratch, "unbound");
+            string folder = Path.Combine(dir, "config");
+            string text = Encoding.UTF8.GetString(Inputs.FirstRun("v1.4.0"))
+                .Replace("Toggle = End\r\n", "Toggle = 999\r\n")
+                .Replace("CycleTrackingMode = PageUp\r\n", "CycleTrackingMode = LeftShift\r\n");
+            Assert.Contains("Toggle = 999\r\n", text);
+            Assert.Contains("CycleTrackingMode = LeftShift\r\n", text);
+            Readers.Place(folder, new Input("unbound", Encoding.UTF8.GetBytes(text)));
+
+            ConfigLoadResult<SubnauticaConfig> loaded = Owner(folder, DefaultsFile.At(Path.Combine(dir, "Defaults.ini"))).Load();
+            Assert.Equal(ConfigLoadStatus.Migrated, loaded.Status);
+            Assert.Equal("Ctrl+Shift+Y", loaded.Config.ToggleKeyName);
+            Assert.Equal("Ctrl+Shift+G", loaded.Config.CycleTrackingModeKeyName);
+            Dictionary<string, string> written = FileRows(Path.Combine(folder, SubnauticaConfigOwner.FileName));
+            Assert.Equal("Ctrl+Shift+Y", written["[Hotkeys] ToggleKey"]);
+            Assert.Equal("Ctrl+Shift+G", written["[Hotkeys] CycleTrackingModeKey"]);
+            Assert.Contains(loaded.Log, l => l.Contains("[Hotkeys] Toggle=999, it is not a key code Unity names, so the action is unbound"));
+            Assert.Contains(loaded.Log, l => l.Contains("[Hotkeys] CycleTrackingMode=LeftShift, it is a Ctrl, Shift or Alt key"));
         }
 
         // The global rows the table does not keep for the game, which v1.4.0's first-run file
@@ -262,9 +290,9 @@ namespace SubnauticaHeadTracking.ConfigDifferential
                 if (import != null)
                 {
                     CheckPoseShaping(import);
-                    if (import.Status != ImportStatus.Undecodable) CheckFollows(import);
+                    CheckFollows(import);
                     CheckStartup("the import", imported);
-                    CheckHotkeys("the import", imported, import);
+                    CheckHotkeys("the import", imported);
                 }
 
                 Migrate("writable", Globals.Created, false, import, imported);
@@ -277,7 +305,6 @@ namespace SubnauticaHeadTracking.ConfigDifferential
             // when it is the shipped one, and dropped exactly when it is not.
             private void CheckPoseShaping(ImportResult import)
             {
-                if (import.Status == ImportStatus.Undecodable) return;
                 var expected = new Dictionary<string, string>
                 {
                     { "[Sensitivity] Yaw", Text(_published.Values.YawSensitivity) },
@@ -297,7 +324,7 @@ namespace SubnauticaHeadTracking.ConfigDifferential
                 var modifiers = new HashSet<string>();
                 foreach (DroppedValue d in import.Dropped)
                 {
-                    if (d.Rule == DropRule.ModifierKey) modifiers.Add(d.Key + "=" + d.Value);
+                    if (d.Rule == DropRule.ModifierKey || d.Rule == DropRule.KeyCodeOutOfRange) modifiers.Add(d.Rule + " " + d.Key + "=" + d.Value);
                     else if (d.Rule != DropRule.PoseShaping) Failures.Add("dropped " + d.Describe() + ", which no approved change covers");
                     else dropped.Add("[" + d.Section + "] " + d.Key + "=" + d.Value);
                 }
@@ -308,7 +335,7 @@ namespace SubnauticaHeadTracking.ConfigDifferential
                 AddModifier(expectedModifiers, "CyclePort", _published.Values.CyclePortHotkey);
                 if (!modifiers.SetEquals(expectedModifiers))
                 {
-                    Failures.Add("modifier keys dropped: " + string.Join(", ", modifiers) + "; expected " + string.Join(", ", expectedModifiers));
+                    Failures.Add("hotkeys dropped: " + string.Join(", ", modifiers) + "; expected " + string.Join(", ", expectedModifiers));
                 }
                 if (import.PoseShaping.Count != expected.Count) Failures.Add(import.PoseShaping.Count + " pose-shaping values, not " + expected.Count);
                 foreach (PoseShapingValue p in import.PoseShaping)
@@ -327,7 +354,8 @@ namespace SubnauticaHeadTracking.ConfigDifferential
 
             private static void AddModifier(HashSet<string> modifiers, string key, KeyCode code)
             {
-                if (IsModifierKey(code)) modifiers.Add(key + "=" + code);
+                if (IsUnnamed(code)) modifiers.Add(DropRule.KeyCodeOutOfRange + " " + key + "=" + ((int)code).ToString(CultureInfo.InvariantCulture));
+                else if (IsModifierKey(code)) modifiers.Add(DropRule.ModifierKey + " " + key + "=" + code);
             }
 
             // The rows the import leaves to Defaults.ini: the startup state v1.4.0 fixed in code,
@@ -390,22 +418,20 @@ namespace SubnauticaHeadTracking.ConfigDifferential
                 }
                 if (!before.Equals(FileState.Of(legacy))) Failures.Add(name + ": the legacy file changed");
 
-                ConfigLoadStatus expected = _input.Bytes == null ? ConfigLoadStatus.Created
-                    : import.Status == ImportStatus.Undecodable ? ConfigLoadStatus.Deferred
-                    : ConfigLoadStatus.Migrated;
+                ConfigLoadStatus expected = _input.Bytes == null ? ConfigLoadStatus.Created : ConfigLoadStatus.Migrated;
                 if (loaded.Status != expected)
                 {
                     Failures.Add(name + ": " + loaded.Status + ", not " + expected + ": " + string.Join(" | ", loaded.Log));
                     Unlock(legacy, readOnly);
                     return;
                 }
-                Outcome = expected == ConfigLoadStatus.Created ? "created" : expected == ConfigLoadStatus.Deferred ? "deferred" : "migrated";
+                Outcome = expected == ConfigLoadStatus.Created ? "created" : "migrated";
                 if (loaded.Diagnostics.Count > 0) Failures.Add(name + ": the new file draws " + loaded.Diagnostics[0].Describe());
 
                 var names = Directory.GetFiles(folder).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal).ToArray();
                 var expectedNames = new List<string>();
                 if (_input.Bytes != null) expectedNames.Add(SubnauticaConfigOwner.LegacyFileName);
-                if (expected != ConfigLoadStatus.Deferred) expectedNames.Add(SubnauticaConfigOwner.FileName);
+                expectedNames.Add(SubnauticaConfigOwner.FileName);
                 expectedNames.Sort(StringComparer.Ordinal);
                 if (!names.SequenceEqual(expectedNames)) Failures.Add(name + ": the folder holds " + string.Join(", ", names));
 
@@ -420,10 +446,7 @@ namespace SubnauticaHeadTracking.ConfigDifferential
                 else
                 {
                     SubnauticaConfig defaults = Owner(Path.Combine(root, "fresh"), DefaultsFile.At(defaultsPath)).Load().Config;
-                    ICollection<ConceptDescriptor> follows = expected == ConfigLoadStatus.Deferred
-                        ? new ConceptDescriptor[0]
-                        : (ICollection<ConceptDescriptor>)import.FollowsDefaultsIni;
-                    string[] want = Expected(imported, defaults, follows);
+                    string[] want = Expected(imported, defaults, import.FollowsDefaultsIni);
                     string[] got = Rows(loaded.Config);
                     for (int i = 0; i < want.Length; i++)
                     {
@@ -444,8 +467,7 @@ namespace SubnauticaHeadTracking.ConfigDifferential
 
                 FileState configBefore = FileState.Of(config);
                 ConfigLoadResult<SubnauticaConfig> again = Owner(folder, DefaultsFile.At(defaultsPath)).Load();
-                ConfigLoadStatus expectedAgain = expected == ConfigLoadStatus.Deferred ? ConfigLoadStatus.Deferred : ConfigLoadStatus.Canonical;
-                if (again.Status != expectedAgain) Failures.Add(name + ": the next start is " + again.Status + ", not " + expectedAgain);
+                if (again.Status != ConfigLoadStatus.Canonical) Failures.Add(name + ": the next start is " + again.Status + ", not Canonical");
                 if (RowDifferences(loaded.Config, again.Config).Length > 0) Failures.Add(name + ": the next start runs on other settings");
                 if (!configBefore.Equals(FileState.Of(config))) Failures.Add(name + ": the next start changed " + SubnauticaConfigOwner.FileName);
                 if (!before.Equals(FileState.Of(legacy))) Failures.Add(name + ": the next start changed the legacy file");
@@ -462,34 +484,32 @@ namespace SubnauticaHeadTracking.ConfigDifferential
                 }
             }
 
-            // Where the import could not name a key, the session keeps that action's chord alone. A
-            // port key left at v1.4.0's default takes this version's.
-            private void CheckHotkeys(string name, SubnauticaConfig config, ImportResult import)
+            // A key the import unbinds (N1, N3) leaves that action's chord alone. A port key left at
+            // v1.4.0's default takes this version's.
+            private void CheckHotkeys(string name, SubnauticaConfig config)
             {
-                bool undecodable = import.Status == ImportStatus.Undecodable;
-                Compare(name, "ToggleKey", config.ToggleKeyName, _published.Values.ToggleHotkey, KeyCode.Y, undecodable);
-                Compare(name, "CycleTrackingModeKey", config.CycleTrackingModeKeyName, _published.Values.CycleTrackingModeHotkey, KeyCode.G, undecodable);
-                Compare(name, "YawModeKey", config.YawModeKeyName, _published.Values.ToggleYawModeHotkey, KeyCode.U, undecodable);
+                Compare(name, "ToggleKey", config.ToggleKeyName, _published.Values.ToggleHotkey, KeyCode.Y);
+                Compare(name, "CycleTrackingModeKey", config.CycleTrackingModeKeyName, _published.Values.CycleTrackingModeHotkey, KeyCode.G);
+                Compare(name, "YawModeKey", config.YawModeKeyName, _published.Values.ToggleYawModeHotkey, KeyCode.U);
                 if (_published.Values.CyclePortHotkey == Shipped.Value.CyclePortHotkey)
                 {
                     if (config.CyclePortKeyName != "Ctrl+Shift+J") Failures.Add(name + ": CyclePortKey=" + config.CyclePortKeyName + ", not this version's Ctrl+Shift+J");
                 }
                 else
                 {
-                    Compare(name, "CyclePortKey", config.CyclePortKeyName, _published.Values.CyclePortHotkey, KeyCode.H, undecodable);
+                    Compare(name, "CyclePortKey", config.CyclePortKeyName, _published.Values.CyclePortHotkey, KeyCode.H);
                 }
             }
 
-            private void Compare(string name, string key, string list, KeyCode legacy, KeyCode chord, bool undecodable)
+            private void Compare(string name, string key, string list, KeyCode legacy, KeyCode chord)
             {
                 if (!KeyBindings.TryParse(list, out KeyBinding[] bindings, out string error))
                 {
                     Failures.Add(name + ": " + key + "=" + list + " does not parse: " + error);
                     return;
                 }
-                KeyBinding[] expected = Readers.PublishedBindings(IsModifierKey(legacy) ? KeyCode.None : legacy, chord);
+                KeyBinding[] expected = Readers.PublishedBindings(IsModifierKey(legacy) || IsUnnamed(legacy) ? KeyCode.None : legacy, chord);
                 if (bindings.SequenceEqual(expected)) return;
-                if (undecodable && bindings.SequenceEqual(Readers.PublishedBindings(KeyCode.None, chord))) return;
                 Failures.Add(name + ": " + key + "=" + list + ", and v1.4.0 bound " + legacy + " and Ctrl+Shift+" + chord);
             }
 
@@ -507,6 +527,12 @@ namespace SubnauticaHeadTracking.ConfigDifferential
         private static bool IsModifierKey(KeyCode code)
         {
             return code >= KeyCode.RightShift && code <= KeyCode.LeftAlt;
+        }
+
+        // A number BepInEx read that no KeyCode names, which the import unbinds (N1).
+        private static bool IsUnnamed(KeyCode code)
+        {
+            return code != KeyCode.None && !KeyBindings.HasName((int)code);
         }
 
         private static string Text(float value)

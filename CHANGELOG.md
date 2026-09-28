@@ -10,6 +10,7 @@
 - Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
   - A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
   - A hotkey set to Ctrl, Shift or Alt on its own. That key goes down before the key of any chord made with it, so the hotkey is left unbound, and it keeps its Ctrl+Shift chord.
+  - A hotkey set to a number that is not a key code Unity names (for example `Toggle = 999`). The hotkey is left unbound, the log says so, and it keeps its Ctrl+Shift chord.
 - An older version of the mod reads `com.cameraunlock.subnautica.headtracking.cfg` and never reads `CameraUnlock.ini`, so a setting you change after updating is not in `com.cameraunlock.subnautica.headtracking.cfg`.
 - Deleting only `CameraUnlock.ini` makes the next start read `com.cameraunlock.subnautica.headtracking.cfg` again. To go back to the defaults, replace everything in `CameraUnlock.ini` with the defaults the README shows. Every setting they set to `default` then follows `Defaults.ini`.
 - BepInEx's ConfigurationManager no longer lists these settings. Edit `BepInEx\config\CameraUnlock.ini` with any text editor.
