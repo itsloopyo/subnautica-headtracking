@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using SubnauticaHeadTracking.Integration;
@@ -7,7 +6,7 @@ namespace SubnauticaHeadTracking.UI
 {
     /// <summary>
     /// Compensates the diving mask position and rotation during head tracking.
-    /// Applied in onPreCull (before Unity caches transforms for culling/rendering),
+    /// Applied in onPreRender (after the game's own mask placement has run),
     /// restored in onPostRender.
     ///
     /// The correction: H = V_new⁻¹ × V_orig transforms the mask so that when rendered
@@ -27,64 +26,63 @@ namespace SubnauticaHeadTracking.UI
 
         internal static void TryFind()
         {
-            // Unity destroyed-object check: the C# ref is non-null but the
-            // underlying native object is gone after scene reload / pause.
-            if (_maskTransform != null && _maskTransform)
+            // Unity's null check is also true for a mask destroyed with its scene.
+            if (_maskTransform != null)
                 return;
 
-            // Stale reference - clear and re-search
             _maskTransform = null;
             _modified = false;
             _firstCompensationLogged = false;
 
             if (_searchFailed) return;
+            if (GameTypeResolver.PlayerScubaMaskModel == null || GameTypeResolver.PlayerMaskType == null) return;
 
-            try
+            var player = GameTypeResolver.GetPlayer();
+            if (player == null) return;
+
+            // Null until the player's Start has picked up the spawned mask model.
+            GameObject maskModel = GameTypeResolver.PlayerScubaMaskModel(player);
+            if (maskModel == null) return;
+
+            MonoBehaviour maskInstance = null;
+            foreach (var behaviour in maskModel.transform.GetComponentsInChildren<MonoBehaviour>(true))
             {
-                GameTypeResolver.EnsureSearched();
-                if (GameTypeResolver.PlayerMaskType == null)
+                if (GameTypeResolver.PlayerMaskType.IsInstanceOfType(behaviour))
                 {
-                    if (GameTypeResolver.PlayerType != null)
-                    {
-                        HeadTrackingPlugin.ModLogger?.LogWarning(
-                            "PlayerMask type not found - mask compensation disabled");
-                        _searchFailed = true;
-                    }
-                    return;
+                    maskInstance = behaviour;
+                    break;
+                }
+            }
+            if (maskInstance == null)
+            {
+                _searchFailed = true;
+                HeadTrackingPlugin.ModLogger?.LogWarning(
+                    $"No PlayerMask under {maskModel.name} - mask compensation disabled");
+                return;
+            }
+
+            _maskTransform = maskInstance.transform;
+
+            int rendererCount = 0;
+            foreach (var renderer in _maskTransform.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+
+                if (renderer is SkinnedMeshRenderer smr)
+                    smr.updateWhenOffscreen = true;
+                else if (renderer is MeshRenderer mr)
+                {
+                    var mf = mr.GetComponent<MeshFilter>();
+                    if (mf != null && mf.mesh != null)
+                        mf.mesh.bounds = NeverCullBounds;
                 }
 
-                var maskInstance = UnityEngine.Object.FindObjectOfType(GameTypeResolver.PlayerMaskType) as Component;
-                if (maskInstance == null) return;
-
-                _maskTransform = maskInstance.transform;
-
-                int rendererCount = 0;
-                foreach (var renderer in _maskTransform.GetComponentsInChildren<Renderer>())
-                {
-                    renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
-
-                    if (renderer is SkinnedMeshRenderer smr)
-                        smr.updateWhenOffscreen = true;
-                    else if (renderer is MeshRenderer mr)
-                    {
-                        var mf = mr.GetComponent<MeshFilter>();
-                        if (mf != null && mf.mesh != null)
-                            mf.mesh.bounds = NeverCullBounds;
-                    }
-
-                    rendererCount++;
-                }
-
-                HeadTrackingPlugin.ModLogger?.LogInfo(
-                    $"PlayerMask found: {_maskTransform.gameObject.name} " +
-                    $"(children: {_maskTransform.childCount}, renderers: {rendererCount} set to ForceNoMotion)");
+                rendererCount++;
             }
-            catch (Exception ex)
-            {
-                HeadTrackingPlugin.ModLogger?.LogError(
-                    $"Error finding PlayerMask: {ex.Message}");
-                throw;
-            }
+
+            HeadTrackingPlugin.ModLogger?.LogInfo(
+                $"PlayerMask found: {_maskTransform.gameObject.name} under {maskModel.name} " +
+                $"(children: {_maskTransform.childCount}, renderers: {rendererCount} set to ForceNoMotion)");
         }
 
         internal static void ApplyCompensation(UnityEngine.Camera cam)

@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using SubnauticaHeadTracking.Integration;
 
@@ -12,40 +11,31 @@ namespace SubnauticaHeadTracking.UI
     {
         private const float PingReferenceDistance = 30f;
 
+        // FindObjectOfType walks every object in the scene, so a failed search is only
+        // repeated this often rather than every frame.
+        private const float SearchRetrySeconds = 1f;
+
         private static RectTransform _pingCanvasTransform;
-        private static bool _pingCanvasSearched;
+        private static float _nextSearchTime;
 
         /// <summary>
-        /// Finds the ping canvas (done once per gameplay session).
+        /// Finds the ping canvas, again whenever the one found has been destroyed with its scene.
         /// </summary>
         internal static void TryFindCanvas()
         {
-            // Unity destroyed-object check: clear stale ref after scene reload
-            if (_pingCanvasTransform != null && !_pingCanvasTransform)
-            {
-                _pingCanvasTransform = null;
-                _pingCanvasSearched = false;
-            }
+            if (_pingCanvasTransform != null) return;
+            if (GameTypeResolver.PingsType == null || GameTypeResolver.PingCanvas == null) return;
 
-            if (_pingCanvasSearched) return;
+            float now = Time.unscaledTime;
+            if (now < _nextSearchTime) return;
+            _nextSearchTime = now + SearchRetrySeconds;
 
-            _pingCanvasSearched = true;
-            try
-            {
-                GameTypeResolver.EnsureSearched();
-                if (GameTypeResolver.PingsType == null || GameTypeResolver.PingCanvasField == null) return;
+            var pingsInstance = UnityEngine.Object.FindObjectOfType(GameTypeResolver.PingsType);
+            if (pingsInstance == null) return;
 
-                var pingsInstance = UnityEngine.Object.FindObjectOfType(GameTypeResolver.PingsType) as MonoBehaviour;
-                if (pingsInstance == null) return;
-
-                _pingCanvasTransform = GameTypeResolver.PingCanvasField.GetValue(pingsInstance) as RectTransform;
-                HeadTrackingPlugin.ModLogger?.LogInfo($"Ping canvas found: {_pingCanvasTransform?.name ?? "null"}");
-            }
-            catch (Exception ex)
-            {
-                HeadTrackingPlugin.ModLogger?.LogError($"Error finding ping canvas: {ex.Message}");
-                throw;
-            }
+            _pingCanvasTransform = GameTypeResolver.PingCanvas(pingsInstance);
+            HeadTrackingPlugin.ModLogger?.LogInfo(
+                $"Ping canvas found: {(_pingCanvasTransform != null ? _pingCanvasTransform.name : "null")}");
         }
 
         /// <summary>

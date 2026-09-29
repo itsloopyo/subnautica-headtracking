@@ -1,4 +1,3 @@
-using System;
 using SubnauticaHeadTracking.Integration;
 
 namespace SubnauticaHeadTracking.GameState
@@ -9,36 +8,23 @@ namespace SubnauticaHeadTracking.GameState
     /// </summary>
     internal static class SwimDetector
     {
-        private static bool _failed;
+        // Player.MotorMode: Walk, Dive, Seaglide, Vehicle, Mech, Run.
+        private const int Dive = 1;
+        private const int Seaglide = 2;
 
         /// <summary>
         /// Returns true if the player's motor mode is swimming or diving.
-        /// Returns false if detection fails or player is not swimming.
+        /// Returns false if detection is unavailable or player is not swimming.
         /// </summary>
         internal static bool IsPlayerSwimming()
         {
-            if (_failed) return false;
+            if (GameTypeResolver.MotorMode == null) return false;
 
-            GameTypeResolver.EnsureSearched();
+            var player = GameTypeResolver.GetPlayer();
+            if (player == null) return false;
 
-            if (GameTypeResolver.PlayerMainField == null)
-                return false;
-
-            if (GameTypeResolver.MotorModeField == null && GameTypeResolver.MotorModeProp == null)
-            {
-                _failed = true;
-                return false;
-            }
-
-            var player = GameTypeResolver.PlayerMainField.GetValue(null);
-            if (ReferenceEquals(player, null)) return false;
-
-            object motorMode = GameTypeResolver.MotorModeField != null
-                ? GameTypeResolver.MotorModeField.GetValue(player)
-                : GameTypeResolver.MotorModeProp.GetValue(player, null);
-
-            int mode = Convert.ToInt32(motorMode);
-            return mode == 1 || mode == 2;
+            int mode = GameTypeResolver.MotorMode(player);
+            return mode == Dive || mode == Seaglide;
         }
     }
 }

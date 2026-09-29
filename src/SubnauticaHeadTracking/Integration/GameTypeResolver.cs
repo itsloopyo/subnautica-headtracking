@@ -1,47 +1,47 @@
 using System;
 using System.Reflection;
+using CameraUnlock.Core.Reflection;
+using UnityEngine;
 
 namespace SubnauticaHeadTracking.Integration
 {
     /// <summary>
     /// Centralizes reflection lookups for Subnautica game types.
-    /// Call EnsureSearched() before accessing any field. All lookups run once
-    /// and are cached in static fields for the lifetime of the process.
+    /// Call EnsureSearched() before accessing any member. All lookups run once, and every
+    /// member read per frame is a compiled getter rather than FieldInfo/PropertyInfo.GetValue.
+    /// A getter left null means the member was not found; that is logged once, here.
     /// </summary>
     internal static class GameTypeResolver
     {
+        private const BindingFlags Instance = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        private const BindingFlags Static = BindingFlags.Public | BindingFlags.Static;
+
         private static bool _searched;
 
         // Player
         public static Type PlayerType { get; private set; }
-        public static FieldInfo PlayerMainField { get; private set; }
-        public static FieldInfo MotorModeField { get; private set; }
-        public static PropertyInfo MotorModeProp { get; private set; }
+        public static Func<object> PlayerMain { get; private set; }
+        public static Func<object, int> MotorMode { get; private set; }
+        public static Func<object, Component> PlayerPda { get; private set; }
+        public static Func<object, GameObject> PlayerScubaMaskModel { get; private set; }
 
-        // uGUI_MainMenu
-        public static Type MainMenuType { get; private set; }
-        public static FieldInfo MainMenuMainField { get; private set; }
-
-        // IngameMenu
-        public static Type IngameMenuType { get; private set; }
-        public static FieldInfo IngameMenuMainField { get; private set; }
-        public static FieldInfo IngameMenuSelectedField { get; private set; }
+        // uGUI_MainMenu, IngameMenu
+        public static Func<object> MainMenuMain { get; private set; }
+        public static Func<object> IngameMenuMain { get; private set; }
+        public static Func<object, object> IngameMenuSelected { get; private set; }
 
         // HandReticle
-        public static Type HandReticleType { get; private set; }
-        public static FieldInfo HandReticleMainField { get; private set; }
+        public static Func<object> HandReticleMain { get; private set; }
 
         // PDA
-        public static Type PDAType { get; private set; }
-        public static FieldInfo PDAIsInUseField { get; private set; }
-        public static PropertyInfo PDAIsInUseProp { get; private set; }
+        public static Func<object, object> PdaIsInUse { get; private set; }
 
         // PlayerMask
         public static Type PlayerMaskType { get; private set; }
 
         // uGUI_Pings
         public static Type PingsType { get; private set; }
-        public static FieldInfo PingCanvasField { get; private set; }
+        public static Func<object, RectTransform> PingCanvas { get; private set; }
 
         /// <summary>
         /// Attempts to resolve all game types from Assembly-CSharp.
@@ -57,59 +57,70 @@ namespace SubnauticaHeadTracking.Integration
 
             _searched = true;
 
-            PlayerMainField = PlayerType.GetField("main",
-                BindingFlags.Public | BindingFlags.Static);
-            MotorModeField = PlayerType.GetField("motorMode",
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic);
-            if (MotorModeField == null)
+            PlayerMain = StaticField(PlayerType, "main");
+            FieldInfo motorMode = Field(PlayerType, "motorMode");
+            if (motorMode != null) MotorMode = CompiledGetters.ForInstanceField<int>(motorMode);
+            FieldInfo pda = Field(PlayerType, "pda");
+            if (pda != null) PlayerPda = CompiledGetters.ForInstanceField<Component>(pda);
+            // Player toggles this GameObject off whenever the player is not diving, and
+            // FindObjectOfType skips inactive objects, so the mask is reached through it.
+            FieldInfo scubaMask = Field(PlayerType, "scubaMaskModel");
+            if (scubaMask != null) PlayerScubaMaskModel = CompiledGetters.ForInstanceField<GameObject>(scubaMask);
+
+            Type mainMenu = FindType("uGUI_MainMenu");
+            if (mainMenu != null) MainMenuMain = StaticField(mainMenu, "main");
+
+            Type ingameMenu = FindType("IngameMenu");
+            if (ingameMenu != null)
             {
-                MotorModeProp = PlayerType.GetProperty("motorMode",
-                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic);
+                IngameMenuMain = StaticField(ingameMenu, "main");
+                // Declared on uGUI_InputGroup as a property.
+                IngameMenuSelected = Property(ingameMenu, "selected");
             }
 
-            MainMenuType = FindType("uGUI_MainMenu");
-            if (MainMenuType != null)
-            {
-                MainMenuMainField = MainMenuType.GetField("main",
-                    BindingFlags.Public | BindingFlags.Static);
-            }
+            Type handReticle = FindType("HandReticle");
+            if (handReticle != null) HandReticleMain = StaticField(handReticle, "main");
 
-            IngameMenuType = FindType("IngameMenu");
-            if (IngameMenuType != null)
-            {
-                IngameMenuMainField = IngameMenuType.GetField("main",
-                    BindingFlags.Public | BindingFlags.Static);
-                IngameMenuSelectedField = IngameMenuType.GetField("selected",
-                    BindingFlags.Public | BindingFlags.Instance);
-            }
-
-            HandReticleType = FindType("HandReticle");
-            if (HandReticleType != null)
-            {
-                HandReticleMainField = HandReticleType.GetField("main",
-                    BindingFlags.Public | BindingFlags.Static);
-            }
-
-            PDAType = FindType("PDA");
-            if (PDAType != null)
-            {
-                PDAIsInUseField = PDAType.GetField("isInUse",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                if (PDAIsInUseField == null)
-                {
-                    PDAIsInUseProp = PDAType.GetProperty("isInUse",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                }
-            }
+            Type pdaType = FindType("PDA");
+            if (pdaType != null) PdaIsInUse = Property(pdaType, "isInUse");
 
             PlayerMaskType = FindType("PlayerMask");
 
             PingsType = FindType("uGUI_Pings");
             if (PingsType != null)
             {
-                PingCanvasField = PingsType.GetField("pingCanvas",
-                    BindingFlags.Public | BindingFlags.Instance);
+                FieldInfo pingCanvas = Field(PingsType, "pingCanvas");
+                if (pingCanvas != null) PingCanvas = CompiledGetters.ForInstanceField<RectTransform>(pingCanvas);
             }
+
+            foreach (string missing in new[]
+                     {
+                         PlayerMain == null ? "Player.main" : null,
+                         MotorMode == null ? "Player.motorMode (swim offset)" : null,
+                         PlayerPda == null || PdaIsInUse == null ? "Player.pda / PDA.isInUse (PDA suppression)" : null,
+                         PlayerScubaMaskModel == null || PlayerMaskType == null ? "Player.scubaMaskModel / PlayerMask (mask compensation)" : null,
+                         MainMenuMain == null ? "uGUI_MainMenu.main" : null,
+                         IngameMenuMain == null || IngameMenuSelected == null ? "IngameMenu.main / selected" : null,
+                         HandReticleMain == null ? "HandReticle.main (reticle compensation)" : null,
+                         PingsType == null || PingCanvas == null ? "uGUI_Pings.pingCanvas (ping compensation)" : null,
+                     })
+            {
+                if (missing != null) HeadTrackingPlugin.ModLogger?.LogWarning("Game member not found: " + missing + " - that feature is disabled");
+            }
+        }
+
+        private static FieldInfo Field(Type type, string name) => type.GetField(name, Instance);
+
+        private static Func<object> StaticField(Type type, string name)
+        {
+            FieldInfo field = type.GetField(name, Static);
+            return field == null ? null : CompiledGetters.ForStaticField(field);
+        }
+
+        private static Func<object, object> Property(Type type, string name)
+        {
+            PropertyInfo property = type.GetProperty(name, Instance);
+            return property == null ? null : CompiledGetters.ForInstanceProperty(property);
         }
 
         private static Type FindType(string name)
@@ -123,6 +134,15 @@ namespace SubnauticaHeadTracking.Integration
                 if (type != null) return type;
             }
             return null;
+        }
+
+        /// <summary>Player.main, or null while there is no live player.</summary>
+        public static Component GetPlayer()
+        {
+            EnsureSearched();
+            if (PlayerMain == null) return null;
+            var player = PlayerMain() as Component;
+            return player == null ? null : player;
         }
     }
 }

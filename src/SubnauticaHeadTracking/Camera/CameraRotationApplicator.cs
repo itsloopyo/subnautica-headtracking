@@ -48,20 +48,11 @@ namespace SubnauticaHeadTracking.Camera
         public static float CurrentRoll { get; private set; }
 
         /// <summary>
-        /// Current position offset applied to the view matrix (camera-local space).
-        /// Used by mask compensation to keep attached objects screen-fixed.
-        /// </summary>
-        public static Vector3 CurrentPositionOffset { get; private set; }
-
-        /// <summary>
         /// The camera's original (game-computed) view matrix, captured after
         /// ResetWorldToCameraMatrix but before head tracking rotation/position is applied.
         /// Used by PlayerMaskCompensation to compute the correction transform.
         /// </summary>
         public static Matrix4x4 OriginalViewMatrix { get; private set; }
-
-        /// <summary>Whether positional tracking is enabled (derived from <see cref="State.TrackingState.Mode"/>).</summary>
-        public static bool PositionEnabled => State.TrackingState.IsPositionEnabled;
 
         /// <summary>
         /// Sets up the rotation and position processing from the settings the session runs on.
@@ -109,15 +100,6 @@ namespace SubnauticaHeadTracking.Camera
         /// <param name="receiver">Core OpenTrack receiver providing rotation data</param>
         public static void ApplyViewMatrixRotation(UnityEngine.Camera cam, OpenTrackReceiver receiver)
         {
-            if (cam == null)
-            {
-                throw new System.ArgumentNullException(nameof(cam), "Camera cannot be null");
-            }
-            if (receiver == null)
-            {
-                throw new System.ArgumentNullException(nameof(receiver), "Receiver cannot be null");
-            }
-
             // Cache Time.deltaTime - single native interop read instead of five
             float dt = Time.deltaTime;
 
@@ -175,7 +157,7 @@ namespace SubnauticaHeadTracking.Camera
             Vector3 totalViewOffset = Vector3.zero;
 
             // Position processing: compute offset (rendering-only, like rotation)
-            if (State.TrackingState.IsPositionEnabled && _positionProcessor != null && _positionInterpolator != null)
+            if (State.TrackingState.IsPositionEnabled)
             {
                 var rawPos = receiver.GetLatestPosition();
                 var interpolatedPos = _positionInterpolator.Update(rawPos, dt);
@@ -184,15 +166,12 @@ namespace SubnauticaHeadTracking.Camera
 
                 // Already box-clamped by the processor against the configured asymmetric
                 // limits ([-LimitYDown, +LimitY], [-LimitZ, +LimitZBack]).
-                Vector3 offset = new Vector3(posOffset.X, posOffset.Y, posOffset.Z);
-
-                CurrentPositionOffset = offset;
-                totalViewOffset = -offset;
+                totalViewOffset = new Vector3(-posOffset.X, -posOffset.Y, -posOffset.Z);
             }
 
             // Swim body avoidance: nudge camera forward+down when swimming
             float targetBlend = SwimDetector.IsPlayerSwimming() ? 1f : 0f;
-            _smoothedSwimBlend = Mathf.Lerp(_smoothedSwimBlend, targetBlend, SwimBlendSpeed * dt);
+            _smoothedSwimBlend = Mathf.Lerp(_smoothedSwimBlend, targetBlend, 1f - Mathf.Exp(-SwimBlendSpeed * dt));
             if (_smoothedSwimBlend > 0.001f)
             {
                 totalViewOffset += SwimOffset * _smoothedSwimBlend;

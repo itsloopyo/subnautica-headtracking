@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -18,7 +17,10 @@ namespace SubnauticaHeadTracking.UI
         private static readonly List<Renderer> _renderers = new List<Renderer>();
         private static readonly List<ShadowCastingMode> _originalModes = new List<ShadowCastingMode>();
         private static bool _hidden;
-        private static bool _searchDone;
+
+        // The player the renderers were collected from. A new Player (a save loaded after
+        // returning to the main menu) is searched again, whatever the old search found.
+        private static Component _searchedPlayer;
 
         private static readonly HashSet<string> ShadowOnlyMeshes = new HashSet<string>
         {
@@ -30,56 +32,21 @@ namespace SubnauticaHeadTracking.UI
             "scuba_head",
         };
 
-        internal static void TryFind()
+        internal static void Hide()
         {
-            if (_renderers.Count > 0 && _renderers[0] == null)
+            var player = GameTypeResolver.GetPlayer();
+            if (player == null) return;
+
+            if (!ReferenceEquals(player, _searchedPlayer))
             {
+                // The old player's renderers are destroyed with it; nothing to restore.
                 _renderers.Clear();
                 _originalModes.Clear();
                 _hidden = false;
-                _searchDone = false;
+                _searchedPlayer = player;
+                Collect(player);
             }
 
-            if (_renderers.Count > 0) return;
-            if (_searchDone) return;
-
-            try
-            {
-                GameTypeResolver.EnsureSearched();
-                if (GameTypeResolver.PlayerMainField == null) return;
-
-                var player = GameTypeResolver.PlayerMainField.GetValue(null) as Component;
-                if (player == null) return;
-
-                _searchDone = true;
-
-                foreach (var r in player.GetComponentsInChildren<Renderer>(true))
-                {
-                    if (ShadowOnlyMeshes.Contains(r.gameObject.name))
-                    {
-                        _renderers.Add(r);
-                        _originalModes.Add(r.shadowCastingMode);
-                        HeadTrackingPlugin.ModLogger?.LogInfo(
-                            $"PlayerHeadHider: found {r.gameObject.name} (original mode={r.shadowCastingMode})");
-                    }
-                }
-
-                if (_renderers.Count == 0)
-                {
-                    HeadTrackingPlugin.ModLogger?.LogWarning(
-                        "PlayerHeadHider: no matching head meshes found");
-                }
-            }
-            catch (Exception ex)
-            {
-                HeadTrackingPlugin.ModLogger?.LogError(
-                    $"PlayerHeadHider search failed: {ex.Message}");
-                _searchDone = true;
-            }
-        }
-
-        internal static void Hide()
-        {
             if (_hidden) return;
             for (int i = 0; i < _renderers.Count; i++)
                 _renderers[i].shadowCastingMode = ShadowCastingMode.ShadowsOnly;
@@ -89,18 +56,31 @@ namespace SubnauticaHeadTracking.UI
         internal static void Show()
         {
             if (!_hidden) return;
-            for (int i = 0; i < _renderers.Count; i++)
-                _renderers[i].shadowCastingMode = _originalModes[i];
             _hidden = false;
+            for (int i = 0; i < _renderers.Count; i++)
+            {
+                if (_renderers[i] != null)
+                    _renderers[i].shadowCastingMode = _originalModes[i];
+            }
         }
 
-        internal static void Reset()
+        private static void Collect(Component player)
         {
-            Show();
-            _renderers.Clear();
-            _originalModes.Clear();
-            _hidden = false;
-            _searchDone = false;
+            foreach (var r in player.GetComponentsInChildren<Renderer>(true))
+            {
+                if (ShadowOnlyMeshes.Contains(r.gameObject.name))
+                {
+                    _renderers.Add(r);
+                    _originalModes.Add(r.shadowCastingMode);
+                    HeadTrackingPlugin.ModLogger?.LogInfo(
+                        $"PlayerHeadHider: found {r.gameObject.name} (original mode={r.shadowCastingMode})");
+                }
+            }
+
+            if (_renderers.Count == 0)
+            {
+                HeadTrackingPlugin.ModLogger?.LogWarning("PlayerHeadHider: no matching head meshes found");
+            }
         }
     }
 }

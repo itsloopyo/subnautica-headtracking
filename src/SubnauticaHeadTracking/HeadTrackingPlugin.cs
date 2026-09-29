@@ -36,6 +36,7 @@ namespace SubnauticaHeadTracking
         private static UnityEngine.Camera _mainCameraCache;
         private static int _gameplayFrame = -1;
         private static bool _gameplayCache;
+        private static int _preCullFrame = -1;
 
         private static UnityEngine.Camera GetMainCamera()
         {
@@ -111,12 +112,17 @@ namespace SubnauticaHeadTracking
 
         internal static void CyclePort()
         {
-            int nextPort = PortRangeBase + ((CurrentPort - PortRangeBase + 1) % PortRangeSize);
+            // A configured port outside the range steps into it; C#'s % keeps the sign of a
+            // port below the range, so the remainder is folded back to non-negative.
+            int step = ((CurrentPort - PortRangeBase + 1) % PortRangeSize + PortRangeSize) % PortRangeSize;
+            int nextPort = PortRangeBase + step;
 
             staticReceiver.Stop();
-            staticReceiver.Start(nextPort);
+            bool listening = staticReceiver.Start(nextPort);
             CurrentPort = nextPort;
-            ModLogger.LogInfo($"UDP port cycled to {CurrentPort} - configure OpenTrack to send to this port");
+            ModLogger.LogInfo(listening
+                ? $"UDP port cycled to {CurrentPort} - configure OpenTrack to send to this port"
+                : $"UDP port cycled to {CurrentPort}, which could not be bound yet - the receiver keeps retrying it");
         }
 
         private void InitializeCameraCallback()
@@ -141,47 +147,27 @@ namespace SubnauticaHeadTracking
             if (!initialized) return;
             if (cam != GetMainCamera()) return;
 
+            // Once per frame: a second render of the main camera in the same frame would
+            // otherwise read each hotkey press twice and advance the pose pipeline twice.
+            // The view matrix set below persists for any later render this frame.
+            int frame = Time.frameCount;
+            if (frame == _preCullFrame) return;
+            _preCullFrame = frame;
+
             // Hotkeys must be checked before the IsEnabled guard so the toggle
-            // hotkey can re-enable tracking. Runs once per frame (main camera only).
-            if (staticReceiver != null)
-                Input.HotkeyHandler.CheckHotkeys();
+            // hotkey can re-enable tracking.
+            Input.HotkeyHandler.CheckHotkeys();
 
-            // Detect PDA open/close for view matrix suppression
-            UI.PDACompensation.TryFind();
-            UI.PDACompensation.UpdateState();
-
-            // Determine if head tracking should be active this frame
-            bool shouldTrack = State.TrackingState.IsEnabled && CheckGameplay();
-
-            if (shouldTrack && staticReceiver == null)
-            {
-                ModLogger?.LogError("CRITICAL: staticReceiver is null after initialization - disabling head tracking");
-                initialized = false;
-                shouldTrack = false;
-            }
-
-            // Track actual receiver connection state independently of gameplay
-            // state so that pause/unpause doesn't trigger a false reconnection.
-            bool receiverActive = staticReceiver != null && staticReceiver.IsReceiving;
-            if (!receiverActive)
-                shouldTrack = false;
-
+            bool receiverActive = staticReceiver.IsReceiving;
             if (receiverActive && !_hasLoggedFirstPacket)
             {
                 _hasLoggedFirstPacket = true;
-                ModLogger?.LogInfo($"First tracker packet received on port {CurrentPort} (remote sender: {staticReceiver.IsRemoteConnection})");
+                ModLogger.LogInfo($"First tracker packet received on port {CurrentPort} (remote sender: {staticReceiver.IsRemoteConnection})");
             }
 
-            if (!shouldTrack)
+            if (!receiverActive || !State.TrackingState.IsEnabled || !CheckGameplay())
             {
-                // If the camera was in manual matrix mode, reset it so the transform
-                // drives the view again (mouse look works, no frozen view).
-                if (_viewMatrixOverridden)
-                {
-                    cam.ResetWorldToCameraMatrix();
-                    _viewMatrixOverridden = false;
-                    UI.PlayerHeadHider.Show();
-                }
+                StopDrawingTrackedView(cam);
                 return;
             }
 
@@ -189,20 +175,33 @@ namespace SubnauticaHeadTracking
             // This ensures seamless resume when PDA closes - no stale data, no jump.
             Camera.CameraRotationApplicator.ApplyViewMatrixRotation(cam, staticReceiver);
 
+            UI.PDACompensation.UpdateState();
             if (UI.PDACompensation.IsPDAOpen)
             {
-                // PDA open: undo view matrix but processor stays current
-                cam.ResetWorldToCameraMatrix();
-                _viewMatrixOverridden = false;
+                // ApplyViewMatrixRotation has just written the matrix, so the stop path must reset it.
+                _viewMatrixOverridden = true;
+                StopDrawingTrackedView(cam);
                 return;
             }
 
             _viewMatrixOverridden = true;
 
-            UI.PlayerHeadHider.TryFind();
             UI.PlayerHeadHider.Hide();
             UI.ReticleCompensation.UpdatePosition(cam);
             UI.PingCompensation.TryFindCanvas();
+        }
+
+        /// <summary>
+        /// Hands the view back to the camera's transform and undoes everything drawn for the
+        /// tracked view, so mouse look drives an unmodified view again.
+        /// </summary>
+        private static void StopDrawingTrackedView(UnityEngine.Camera cam)
+        {
+            if (!_viewMatrixOverridden) return;
+            _viewMatrixOverridden = false;
+            cam.ResetWorldToCameraMatrix();
+            UI.PlayerHeadHider.Show();
+            UI.ReticleCompensation.Restore();
         }
 
         private static void OnCameraPreRenderStatic(UnityEngine.Camera cam)
@@ -237,13 +236,6 @@ namespace SubnauticaHeadTracking
 
             var cam = GetMainCamera();
             if (cam == null) return;
-
-            float pitch = Camera.CameraRotationApplicator.CurrentPitch;
-            float yaw = Camera.CameraRotationApplicator.CurrentYaw;
-            float roll = Camera.CameraRotationApplicator.CurrentRoll;
-
-            if (Mathf.Abs(yaw) < 0.01f && Mathf.Abs(pitch) < 0.01f && Mathf.Abs(roll) < 0.01f)
-                return;
 
             UI.PingCompensation.Reposition(cam);
         }

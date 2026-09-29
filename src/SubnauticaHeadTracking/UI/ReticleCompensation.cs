@@ -12,17 +12,15 @@ namespace SubnauticaHeadTracking.UI
     {
         private const float MaxRaycastDistance = 1000f;
         private const float MinRaycastDistance = 0.5f;
-        private const float DistanceSmoothingRate = 15f;
         private static int _raycastLayerMask = -1;
-
-        private static float _lastHitDistance = 100f;
 
         private static RectTransform _handReticleRect;
         private static Canvas _cachedReticleCanvas;
-#if DEBUG
-        private static bool _hierarchyLogged;
-#endif
 
+        // The game never writes the HandReticle root's anchoredPosition, so whatever this
+        // leaves there stays after tracking stops unless it is put back.
+        private static Vector2 _originalAnchoredPosition;
+        private static bool _moved;
 #if DEBUG
         private static void LogHierarchy(Transform root, int depth = 0)
         {
@@ -46,32 +44,20 @@ namespace SubnauticaHeadTracking.UI
 
         internal static void UpdatePosition(UnityEngine.Camera cam)
         {
-            GameTypeResolver.EnsureSearched();
+            if (GameTypeResolver.HandReticleMain == null) return;
 
-            if (GameTypeResolver.HandReticleType == null || GameTypeResolver.HandReticleMainField == null)
-                return;
-
-            var handReticle = GameTypeResolver.HandReticleMainField.GetValue(null);
+            var handReticle = GameTypeResolver.HandReticleMain() as MonoBehaviour;
             if (handReticle == null) return;
 
-            // Unity destroyed-object check: clear stale refs after scene reload
-            if (_handReticleRect != null && !_handReticleRect)
-            {
-                _handReticleRect = null;
-                _cachedReticleCanvas = null;
-#if DEBUG
-                _hierarchyLogged = false;
-#endif
-            }
-
-            // Cache the HandReticle's root RectTransform (moves everything)
+            // Cache the HandReticle's root RectTransform (moves everything). Unity's null
+            // check is also true once the cached one was destroyed with its scene.
             if (_handReticleRect == null)
             {
-                var mb = handReticle as MonoBehaviour;
-                if (mb == null) return;
-                _handReticleRect = mb.transform as RectTransform;
+                _handReticleRect = handReticle.transform as RectTransform;
                 if (_handReticleRect == null) return;
 
+                _originalAnchoredPosition = _handReticleRect.anchoredPosition;
+                _moved = false;
                 _cachedReticleCanvas = _handReticleRect.GetComponentInParent<Canvas>();
 
                 HeadTrackingPlugin.ModLogger?.LogInfo(
@@ -79,22 +65,17 @@ namespace SubnauticaHeadTracking.UI
                     $"(children: {_handReticleRect.childCount}, " +
                     $"canvas: {(_cachedReticleCanvas != null ? _cachedReticleCanvas.name : "null")}, " +
                     $"scaleFactor: {(_cachedReticleCanvas != null ? _cachedReticleCanvas.scaleFactor : 1f)})");
-            }
-
 #if DEBUG
-            // One-time hierarchy dump for diagnostics
-            if (!_hierarchyLogged && _handReticleRect != null)
-            {
-                _hierarchyLogged = true;
                 HeadTrackingPlugin.ModLogger?.LogInfo("HandReticle hierarchy:");
                 LogHierarchy(_handReticleRect);
-            }
 #endif
+            }
 
             float scaleFactor = _cachedReticleCanvas != null ? _cachedReticleCanvas.scaleFactor : 1f;
 
-            Vector3 aimOrigin = cam.transform.position;
-            Vector3 aimDir = cam.transform.forward;
+            Transform camTransform = cam.transform;
+            Vector3 aimOrigin = camTransform.position;
+            Vector3 aimDir = camTransform.forward;
 
             // Exclude Player layer to avoid hitting held items (seaglide, scanner, etc.)
             if (_raycastLayerMask == -1)
@@ -105,22 +86,28 @@ namespace SubnauticaHeadTracking.UI
                     : Physics.DefaultRaycastLayers;
             }
 
-            RaycastHit hit;
-            if (Physics.Raycast(aimOrigin, aimDir, out hit, MaxRaycastDistance,
-                    _raycastLayerMask, QueryTriggerInteraction.Ignore)
-                && hit.distance >= MinRaycastDistance)
+            // The live aim point on a hit; with nothing hit, the aim direction itself (w = 0),
+            // which projects to where a point at infinity along the aim would be drawn. The ray
+            // starts MinRaycastDistance out, so nothing nearer than that is taken as the target.
+            Vector4 aimPoint;
+            if (Physics.Raycast(aimOrigin + aimDir * MinRaycastDistance, aimDir, out RaycastHit hit,
+                    MaxRaycastDistance - MinRaycastDistance, _raycastLayerMask, QueryTriggerInteraction.Ignore))
             {
-                float t = 1f - Mathf.Exp(-DistanceSmoothingRate * Time.deltaTime);
-                _lastHitDistance = Mathf.Lerp(_lastHitDistance, hit.distance, t);
+                Vector3 p = hit.point;
+                aimPoint = new Vector4(p.x, p.y, p.z, 1f);
+            }
+            else
+            {
+                aimPoint = new Vector4(aimDir.x, aimDir.y, aimDir.z, 0f);
             }
 
             // Project aim point through our modified view+projection matrices explicitly.
             // cam.WorldToScreenPoint may not reflect the custom worldToCameraMatrix
             // (including position offset) within the same frame in all Unity versions.
-            Vector3 aimWorldPoint = aimOrigin + aimDir * _lastHitDistance;
             Matrix4x4 vp = cam.projectionMatrix * cam.worldToCameraMatrix;
-            Vector4 clip = vp * new Vector4(aimWorldPoint.x, aimWorldPoint.y, aimWorldPoint.z, 1f);
+            Vector4 clip = vp * aimPoint;
 
+            _moved = true;
             if (clip.w <= 0f)
             {
                 _handReticleRect.anchoredPosition = new Vector2(Screen.width * 10f, 0f);
@@ -138,6 +125,17 @@ namespace SubnauticaHeadTracking.UI
 
             // Move the entire HandReticle root - all children (icon, text, prompts) follow
             _handReticleRect.anchoredPosition = offset;
+        }
+
+        /// <summary>
+        /// Puts the reticle back where the game had it, for when the tracked view is no longer drawn.
+        /// </summary>
+        internal static void Restore()
+        {
+            if (!_moved) return;
+            _moved = false;
+            if (_handReticleRect != null)
+                _handReticleRect.anchoredPosition = _originalAnchoredPosition;
         }
     }
 }
